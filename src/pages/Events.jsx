@@ -25,7 +25,7 @@ import {
 import { Search, Add, FilterList, Edit, Delete } from "@mui/icons-material"
 import Layout from "./Layout"
 
-const API_BASE_URL = "http://localhost:5001"
+const API_BASE_URL = "http://192.168.1.148:5001"
 
 const getEvents = async () => {
   const response = await fetch(`${API_BASE_URL}/events`)

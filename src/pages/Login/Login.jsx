@@ -100,7 +100,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const url = "http://localhost:5001/auth/login"; // Ensure your backend runs on 5001
+      const url = "http://192.168.1.148:5001/auth/login"; // Ensure your backend runs on 5001
       const response = await fetch(url, {
         method: "POST",
         mode: "cors",

@@ -101,7 +101,7 @@ const EditEvents = () => {
        // Use the consistent API endpoint structure for updating
        // Make sure your backend route handles PUT /events/:title/:day appropriately
       const res = await fetch(
-        `http://localhost:5001/events/${encodeURIComponent(originalTitle)}/${encodeURIComponent(originalDay)}`,
+        `http://192.168.1.148:5001/events/${encodeURIComponent(originalTitle)}/${encodeURIComponent(originalDay)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },

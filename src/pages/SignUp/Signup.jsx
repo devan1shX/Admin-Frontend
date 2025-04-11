@@ -120,7 +120,7 @@ const Signup = () => {
     }
 
     try {
-      const url = "http://localhost:5001/auth/signup"
+      const url = "http://192.168.1.148:5001/auth/signup"
       const response = await fetch(url, {
         method: "POST",
         mode: "cors",

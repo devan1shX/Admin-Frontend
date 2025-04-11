@@ -23,7 +23,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'; // Icon
 import { useNavigate } from "react-router-dom"
 import Layout from "./Layout" // Assuming Layout component exists
 
-const API_BASE_URL = "http://localhost:5001"
+const API_BASE_URL = "http://192.168.1.148:5001"
 
 // --- addTech function remains the same ---
 const addTech = async (newData) => {

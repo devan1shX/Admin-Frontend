@@ -84,7 +84,7 @@ const AddEvents = () => {
 
     try {
       // Use the consistent API endpoint
-      const response = await axios.post("http://localhost:5001/events", dataToSend);
+      const response = await axios.post("http://192.168.1.148:5001/events", dataToSend);
       console.log("Event created:", response.data);
       // Reset the form after successful submission
       setEventData({

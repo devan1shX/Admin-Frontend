@@ -40,7 +40,7 @@ import {
 } from "@mui/icons-material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = "http://192.168.1.148:5001";
 
 const Dashboard = () => {
   const theme = useTheme();

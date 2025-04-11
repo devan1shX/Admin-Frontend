@@ -25,7 +25,7 @@ import AddPhotoAlternateIcon from "@mui/icons-material/AddPhotoAlternate";
 import Layout from "./Layout"; // Assuming Layout component exists
 import AddIcon from "@mui/icons-material/Add";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = "http://192.168.1.148:5001";
 
 // --- getTechnologyById remains the same ---
 const getTechnologyById = async (id) => {
