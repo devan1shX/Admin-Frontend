@@ -52,7 +52,7 @@ const EditEvents = () => {
         // Use the consistent API endpoint structure for fetching by identifier
         // Make sure your backend route handles GET /events/:title/:day appropriately
         const res = await fetch(
-          `http://localhost:5001/events/${encodeURIComponent(originalTitle)}/${encodeURIComponent(originalDay)}`
+          `http://192.168.1.148:5001/events/${encodeURIComponent(originalTitle)}/${encodeURIComponent(originalDay)}`
         );
         if (!res.ok) {
           if (res.status === 404) {
