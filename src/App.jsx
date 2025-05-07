@@ -10,7 +10,6 @@ import EditEvents from "./pages/EditEvents";
 import AddEvents from "./pages/AddEvents";
 import EditLinks from "./pages/EditLinks";
 import Login from "./pages/Login/Login";
-import Signup from "./pages/SignUp/Signup";
 
 function App() {
   const ProtectedRoute = ({ children }) => {
@@ -22,7 +21,6 @@ function App() {
     <>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
         <Route
           path="/add-technology"
           element={

@@ -1,609 +1,308 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react"; // Added useRef, useCallback
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  TextField,
-  Button,
-  Paper,
-  Grid,
-  Typography,
-  CircularProgress,
-  useTheme,
-  useMediaQuery,
-  Box,
-  IconButton,
-  Divider, // Added
-  Radio, // Added
-  RadioGroup, // Added
-  FormControlLabel, // Added
-  FormControl, // Added
-  FormLabel, // Added
+    TextField, Button, Paper, Grid, Typography, CircularProgress,
+    useTheme, useMediaQuery, Box, IconButton, Divider, Radio,
+    RadioGroup, FormControlLabel, FormControl, FormLabel, Alert
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddPhotoAlternateIcon from "@mui/icons-material/AddPhotoAlternate";
-import Layout from "./Layout"; // Assuming Layout component exists
 import AddIcon from "@mui/icons-material/Add";
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import Layout from "./Layout";
 
 const API_BASE_URL = "http://192.168.1.148:5001";
 
-// --- getTechnologyById remains the same ---
+const getUserInfo = () => {
+    const userString = localStorage.getItem("user");
+    if (userString) { try { return JSON.parse(userString); } catch (e) { console.error("Failed to parse user info", e); localStorage.removeItem("user"); localStorage.removeItem("token"); return null; } }
+    return null;
+};
+
+const getToken = () => localStorage.getItem("token");
+
 const getTechnologyById = async (id) => {
-  const response = await fetch(`${API_BASE_URL}/technologies/${id}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch technology details");
-  }
-  const data = await response.json();
-  return data;
-};
-
-// --- updateTechnology remains largely the same (ensure backend compatibility) ---
-const updateTechnology = async (id, updatedData) => {
-  const formData = new FormData();
-
-  // Add all non-file/non-complex fields
-  Object.entries(updatedData).forEach(([key, value]) => {
-    // Skip complex types handled separately
-    if (key !== "images" && key !== "newImageData" && key !== "innovators" && key !== "relatedLinks" && key !== "advantages" && key !== "applications" && key !== "useCases") {
-      // Convert boolean spotlight to string for FormData
-      if (key === 'spotlight') {
-          formData.append(key, String(value));
-      } else if (value !== null && value !== undefined) { // Ensure value is not null/undefined
-        formData.append(key, value);
-      }
+    const token = getToken();
+    if (!token) throw new Error("Authentication token not found. Please log in.");
+    const response = await fetch(`${API_BASE_URL}/technologies/${id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!response.ok) {
+        let errorMsg = "Failed to fetch technology details";
+        if (response.status === 404) errorMsg = "Technology not found.";
+        else if (response.status === 401 || response.status === 403) { errorMsg = "Access Denied fetching technology. Session may have expired."; localStorage.removeItem("user"); localStorage.removeItem("token"); }
+        else errorMsg = `HTTP error! status: ${response.status}`;
+        throw new Error(errorMsg);
     }
-  });
-
-  // Handle arrays by stringifying them (adjust if backend expects different format)
-  ['innovators', 'relatedLinks', 'advantages', 'applications', 'useCases'].forEach(key => {
-     if (updatedData[key] && Array.isArray(updatedData[key])) {
-         formData.append(key, JSON.stringify(updatedData[key]));
-     } else {
-          formData.append(key, JSON.stringify([])); // Send empty array if null/undefined
-     }
-  });
-
-
-  // Add existing images data (send only necessary info, e.g., url and caption)
-  if (updatedData.images && updatedData.images.length > 0) {
-    // Filter out any null/undefined images just in case
-    const validExistingImages = updatedData.images.filter(img => img && img.url).map(img => ({ url: img.url, caption: img.caption || "" }));
-     formData.append("existingImages", JSON.stringify(validExistingImages));
-  } else {
-    formData.append("existingImages", JSON.stringify([])); // Indicate all removed or none existed
-  }
-
-
-  // Add new image files and their captions from newImageData
-  if (updatedData.newImageData && updatedData.newImageData.length > 0) {
-    updatedData.newImageData.forEach((imgData, index) => {
-      if (imgData.file) { // Check if file exists
-          formData.append("images", imgData.file); // Append the file
-          // Ensure backend matches this caption naming convention
-          formData.append(`imageCaptions[${index}]`, imgData.caption || "");
-      }
-    });
-  }
-
-  console.log("FormData prepared for PUT:"); // Debugging: Log FormData contents
-  for (let [key, value] of formData.entries()) {
-      console.log(`${key}:`, value instanceof File ? value.name : value);
-  }
-
-  const response = await fetch(`${API_BASE_URL}/technologies/${id}`, {
-    method: "PUT",
-    body: formData,
-    // No Content-Type header - browser sets it for FormData
-  });
-
-  if (!response.ok) {
-    const errorData = await response.text(); // Read error response body
-    console.error("Server error:", errorData);
-    throw new Error(`Failed to update technology: ${response.statusText} - ${errorData}`);
-  }
-
-  const data = await response.json();
-  return data;
+    return await response.json();
 };
 
+const updateTechnology = async (id, updatedData) => {
+    const token = getToken();
+    if (!token) throw new Error("Authentication token not found. Please log in.");
+    const userInfo = getUserInfo();
+    if (userInfo?.role !== 'admin') throw new Error("Permission denied. Only Admins can update technologies.");
+
+    const formData = new FormData();
+    Object.entries(updatedData).forEach(([key, value]) => {
+        if (key === "images" || key === "newImageData") return; // Handled separately
+        if (Array.isArray(value)) {
+            formData.append(key, JSON.stringify(value));
+        } else if (key === 'spotlight') {
+            formData.append(key, String(value));
+        } else if (value !== null && value !== undefined) {
+            formData.append(key, value);
+        }
+    });
+
+    const validExistingImages = (updatedData.images || []).filter(img => img && img.url).map(img => ({ url: img.url, caption: img.caption || "" }));
+    formData.append("existingImages", JSON.stringify(validExistingImages));
+
+    if (updatedData.newImageData && updatedData.newImageData.length > 0) {
+        updatedData.newImageData.forEach((imgData, index) => {
+            if (imgData.file) {
+                formData.append("images", imgData.file);
+                formData.append(`imageCaptions[${index}]`, imgData.caption || "");
+            }
+        });
+    }
+
+    const response = await fetch(`${API_BASE_URL}/technologies/${id}`, { method: "PUT", headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+    if (!response.ok) {
+        let errorMsg = `Failed to update technology: ${response.statusText}`;
+        try {
+            const errorData = await response.json();
+            errorMsg = errorData.message || errorMsg;
+            if (response.status === 401 || response.status === 403) { errorMsg = "Access Denied or Session Expired."; localStorage.removeItem("user"); localStorage.removeItem("token"); }
+            else if (response.status === 409) errorMsg = errorData.message || "Update conflict.";
+        } catch (e) { console.error("Could not parse error response as JSON:", await response.text()); }
+        console.error("Server error during update:", errorMsg);
+        throw new Error(errorMsg);
+    }
+    return await response.json();
+};
 
 const EditTechnology = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const fileInputRef = useRef(null); // Ref for file input
+    const { id } = useParams();
+    const navigate = useNavigate();
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+    const fileInputRef = useRef(null);
 
-  const [techData, setTechData] = useState({
-    name: "",
-    description: "",
-    overview: "",
-    detailedDescription: "",
-    genre: "",
-    docket: "",
-    innovators: [],
-    advantages: "",
-    applications: "",
-    useCases: "",
-    relatedLinks: "",
-    technicalSpecifications: "",
-    trl: "",
-    images: [], // Existing images { url: string, caption?: string }
-    patent: "",
-    spotlight: "false" // Keep as string for RadioGroup, default 'false'
-  });
+    const [userRole, setUserRole] = useState(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isPageAccessible, setIsPageAccessible] = useState(false);
 
-  // State for new image files + preview URLs + captions
-  const [newImages, setNewImages] = useState([]); // Array of { file: File, previewUrl: string, caption: string }
-  const [loading, setLoading] = useState(true); // For initial fetch
-  const [submitting, setSubmitting] = useState(false); // For submit action
-
-  // Fetch Data
-  useEffect(() => {
-    const fetchTech = async () => {
-      setLoading(true);
-      try {
-        const data = await getTechnologyById(id);
-        // Ensure innovators and images are arrays
-        const innovators = Array.isArray(data.innovators) ? data.innovators : [];
-        const images = Array.isArray(data.images) ? data.images.filter(img => img && img.url) : []; // Ensure valid image objects
-
-        setTechData({
-          name: data.name || "",
-          description: data.description || "",
-          overview: data.overview || "",
-          detailedDescription: data.detailedDescription || "",
-          genre: data.genre || "",
-          patent: data.patent || "",
-          spotlight: data.spotlight ? String(data.spotlight) : "false", // Ensure string 'true'/'false'
-          docket: data.docket ? String(data.docket) : "",
-          innovators: innovators,
-           // Join arrays into strings for TextField display
-          advantages: Array.isArray(data.advantages) ? data.advantages.join(", ") : "",
-          applications: Array.isArray(data.applications) ? data.applications.join(", ") : "",
-          useCases: Array.isArray(data.useCases) ? data.useCases.join(", ") : "",
-          relatedLinks: Array.isArray(data.relatedLinks)
-            ? data.relatedLinks.map((link) => `${link.title}|${link.url}`).join(", ")
-            : "",
-          technicalSpecifications: data.technicalSpecifications || "",
-          trl: data.trl ? String(data.trl) : "",
-          images: images, // Store existing images
-        });
-      } catch (error) {
-        console.error("Error fetching technology:", error);
-        alert("Failed to load technology data.");
-        navigate("/admin-dashboard"); // Redirect if fetch fails
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTech();
-  }, [id, navigate]);
-
-  // Cleanup Effect for Object URLs
-  useEffect(() => {
-    // This function runs when the component unmounts
-    return () => {
-      newImages.forEach(imageObj => {
-          if (imageObj.previewUrl) {
-              URL.revokeObjectURL(imageObj.previewUrl);
-          }
-      });
-    };
-  }, [newImages]); // Rerun if newImages array changes structure (though cleanup is mainly for unmount)
-
-  // --- Handlers ---
-
-  // General input change
-  const handleChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setTechData((prev) => ({ ...prev, [name]: value }));
-  }, []);
-
-  // Innovator Handlers
-  const handleAddInnovator = useCallback(() => {
-    setTechData((prev) => ({
-      ...prev,
-      innovators: [...prev.innovators, { name: "", mail: "" }],
-    }));
-  }, []);
-
-  const handleInnovatorChange = useCallback((index, field, value) => {
-    setTechData((prev) => {
-        const updatedInnovators = [...prev.innovators];
-        updatedInnovators[index] = { ...updatedInnovators[index], [field]: value };
-        return { ...prev, innovators: updatedInnovators };
+    const [techData, setTechData] = useState({
+        name: "", description: "", overview: "", detailedDescription: "", genre: "", docket: "",
+        innovators: [{ name: "", mail: "" }], advantages: [""], applications: [""], useCases: [""],
+        relatedLinks: [{ title: "", url: "" }], technicalSpecifications: "", trl: "",
+        images: [], patent: "", spotlight: "false"
     });
-  }, []);
+    const [newImages, setNewImages] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState(null);
 
-  const handleRemoveInnovator = useCallback((index) => {
-    setTechData((prev) => {
-        const updatedInnovators = [...prev.innovators];
-        updatedInnovators.splice(index, 1);
-        return { ...prev, innovators: updatedInnovators };
-    });
-  }, []);
-
-
-  // --- Image Handlers ---
-
-   // Handle new image file selection
-   const handleImageUpload = useCallback((e) => {
-     const files = Array.from(e.target.files);
-     if (files.length > 0) {
-         const newImageObjects = files.map(file => ({
-           file: file,
-           previewUrl: URL.createObjectURL(file),
-           caption: "" // Initialize caption
-         }));
-         setNewImages((prev) => [...prev, ...newImageObjects]);
-     }
-      // Reset file input to allow uploading the same file again if needed
-     if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-     }
-   }, []);
-
-
-  // REFACTORED: Handle caption change for EXISTING images
-  const handleExistingCaptionChange = useCallback((index, value) => {
-     setTechData(prev => {
-         const updatedImages = [...prev.images];
-         if(updatedImages[index]){
-             updatedImages[index] = { ...updatedImages[index], caption: value };
-         }
-         return { ...prev, images: updatedImages };
-     });
-  }, []);
-
-  // REFACTORED: Handle caption change for NEW images
-  const handleNewCaptionChange = useCallback((index, value) => {
-      setNewImages(prevNewImages => {
-          const updatedNewImages = [...prevNewImages];
-          if(updatedNewImages[index]){
-              updatedNewImages[index] = { ...updatedNewImages[index], caption: value };
-          }
-          return updatedNewImages;
-      });
-  }, []);
-
-   // Handle removing an EXISTING image
-   const handleRemoveExistingImage = useCallback((index) => {
-     setTechData((prev) => {
-         const updatedImages = [...prev.images];
-         updatedImages.splice(index, 1);
-         return { ...prev, images: updatedImages };
-     });
-   }, []);
-
-  // Handle removing a NEW image (and revoke its URL)
-  const handleRemoveNewImage = useCallback((index) => {
-    setNewImages(prevNewImages => {
-        const updatedNewImages = [...prevNewImages];
-        const removedImage = updatedNewImages.splice(index, 1)[0];
-        if (removedImage && removedImage.previewUrl) {
-            URL.revokeObjectURL(removedImage.previewUrl); // Revoke URL immediately
-        }
-        return updatedNewImages;
-    });
-  }, []);
-
-  // --- Submit Handler ---
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-
-    // Process data before sending
-    const processedData = {};
-    Object.entries(techData).forEach(([key, value]) => {
-      // Skip existing images array (handled separately)
-      if (key === "images") return;
-
-      // Keep innovators as is (array of objects)
-       if (key === "innovators") {
-           processedData[key] = value.filter(inv => (inv.name && inv.name.trim()) || (inv.mail && inv.mail.trim())); // Filter empty innovators
-           return;
-       }
-
-      const stringValue = value != null ? String(value).trim() : ""; // Trim strings
-
-      if (stringValue !== "" || key === 'spotlight' || key === 'technicalSpecifications' || key === 'description' || key === 'overview' || key === 'docket' || key === 'patent' || key === 'genre') { // Include specific fields even if empty, handle spotlight separately
-         if (["advantages", "applications", "useCases"].includes(key)) {
-             processedData[key] = stringValue.split(",").map(item => item.trim()).filter(Boolean);
-         } else if (key === "relatedLinks") {
-              const links = stringValue
-                  .split(",")
-                  .map((linkStr) => {
-                      const parts = linkStr.split("|").map((part) => part.trim());
-                      if (parts.length === 2 && parts[0] && parts[1]) {
-                           try {
-                               new URL(parts[1]); // Basic URL validation
-                               return { title: parts[0], url: parts[1] };
-                           } catch (_) { return null; }
-                      }
-                      return null;
-                  })
-                  .filter(link => link !== null);
-              processedData[key] = links;
-          } else if (key === "trl") {
-               const num = Number(stringValue);
-               processedData[key] = isNaN(num) ? null : num; // Convert to number or null
-          } else if (key === "spotlight") {
-               processedData[key] = stringValue === 'true'; // Convert radio value string to boolean
-          }
-           else {
-              processedData[key] = stringValue; // Assign trimmed string value
-          }
-       } else {
-            // Handle potentially empty fields if backend requires them (e.g., set to empty array or null)
-            if (["advantages", "applications", "useCases", "relatedLinks"].includes(key)) {
-                processedData[key] = [];
-            } else if (key === 'trl') {
-                 processedData[key] = null;
-            } else {
-                 // You might want to explicitly set other fields to "" or null if required
-                 // processedData[key] = ""; // Or null
+    const fetchTech = useCallback(async () => {
+        if (!id || !isAuthenticated || userRole !== 'admin') { // Ensure id is present and user is admin
+             if (isAuthenticated && userRole !== 'admin') { // If authenticated but not admin
+                setError("Access Denied: You do not have permission to edit technologies.");
+                toast.error("Access Denied: Insufficient permissions.", { position: "top-center" });
+                setTimeout(() => navigate('/admin-dashboard'), 3000);
             }
-       }
-    });
+            setLoading(false);
+            setIsPageAccessible(false);
+            return;
+        }
+        setLoading(true); 
+        setError(null);
+        try {
+            const data = await getTechnologyById(id);
+            setTechData({
+                name: data.name || "",
+                description: data.description || "",
+                overview: data.overview || "",
+                detailedDescription: data.detailedDescription || "",
+                genre: data.genre || "",
+                patent: data.patent || "",
+                spotlight: data.spotlight ? String(data.spotlight) : "false",
+                docket: data.docket || "",
+                innovators: Array.isArray(data.innovators) && data.innovators.length > 0 ? data.innovators : [{ name: "", mail: "" }],
+                advantages: Array.isArray(data.advantages) && data.advantages.length > 0 ? data.advantages : [""],
+                applications: Array.isArray(data.applications) && data.applications.length > 0 ? data.applications : [""],
+                useCases: Array.isArray(data.useCases) && data.useCases.length > 0 ? data.useCases : [""],
+                relatedLinks: Array.isArray(data.relatedLinks) && data.relatedLinks.length > 0 ? data.relatedLinks : [{ title: "", url: "" }],
+                technicalSpecifications: data.technicalSpecifications || "",
+                trl: data.trl ? String(data.trl) : "",
+                images: Array.isArray(data.images) ? data.images.filter(img => img?.url) : [],
+            });
+            setIsPageAccessible(true);
+        } catch (err) {
+            console.error("Error fetching technology:", err); setError(`Failed to load: ${err.message}`);
+            toast.error(`Failed to load data: ${err.message}`, { position: "top-center" });
+            setIsPageAccessible(false);
+            if (err.message.includes("Access Denied") || err.message.includes("token not found")) {
+                setTimeout(() => navigate('/login'), 2100);
+            }
+        } finally { setLoading(false); }
+    }, [id, isAuthenticated, userRole, navigate]);
 
-    // Add existing images data (pass the current state)
-    processedData.images = techData.images;
+    useEffect(() => {
+        const token = getToken(); const userInfo = getUserInfo();
+        if (token && userInfo && userInfo.role) {
+            setIsAuthenticated(true); setUserRole(userInfo.role);
+            if (userInfo.role === 'admin') { fetchTech(); }
+            else {
+                setError("Access Denied: Insufficient permissions."); setLoading(false); setIsPageAccessible(false);
+                setTimeout(() => navigate('/admin-dashboard'), 3000);
+            }
+        } else {
+            setIsAuthenticated(false); setUserRole(null); setError("Authentication required."); setLoading(false); setIsPageAccessible(false);
+            toast.error("Authentication required. Redirecting...", { position: "top-center", autoClose: 2000 });
+            setTimeout(() => navigate('/login'), 2100);
+        }
+    }, [navigate, fetchTech]); // fetchTech dependency will re-run if its own dependencies change
 
-    // Prepare new images data (file + caption)
-    processedData.newImageData = newImages.map(imgObj => ({
-        file: imgObj.file,
-        caption: imgObj.caption || ""
-    }));
+    useEffect(() => { return () => { newImages.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); }); }; }, [newImages]);
 
-    // Add the original ID back if it's not part of techData state
-    processedData.id = id;
+    const handleGenericChange = useCallback((e) => { const { name, value } = e.target; setTechData(prev => ({ ...prev, [name]: value })); }, []);
+    const handleSwitchChange = useCallback((e) => setTechData(prev => ({ ...prev, [e.target.name]: e.target.checked })), []);
 
-    try {
-      await updateTechnology(id, processedData);
-      alert("Technology updated successfully!");
-      navigate("/admin-dashboard");
-    } catch (error) {
-      console.error("Error updating technology:", error);
-      alert(`Failed to update technology: ${error.message || 'Please check details and try again.'}`);
-    } finally {
-      setSubmitting(false);
+    const handleAddInnovator = useCallback(() => setTechData(prev => ({ ...prev, innovators: [...prev.innovators, { name: "", mail: "" }] })), []);
+    const handleInnovatorChange = useCallback((index, field, value) => setTechData(prev => ({ ...prev, innovators: prev.innovators.map((item, i) => i === index ? { ...item, [field]: value } : item) })), []);
+    const handleRemoveInnovator = useCallback((index) => setTechData(prev => ({ ...prev, innovators: prev.innovators.filter((_, i) => i !== index) })), []);
+
+    const handleAddStringToArray = useCallback((fieldName) => setTechData(prev => ({ ...prev, [fieldName]: [...(prev[fieldName] || []), ""] })), []);
+    const handleStringInArrayChange = useCallback((fieldName, index, value) => setTechData(prev => { const arr = [...prev[fieldName]]; arr[index] = value; return { ...prev, [fieldName]: arr }; }), []);
+    const handleRemoveStringFromArray = useCallback((fieldName, index) => setTechData(prev => ({ ...prev, [fieldName]: prev[fieldName].filter((_, i) => i !== index) })), []);
+
+    const handleAddRelatedLink = useCallback(() => setTechData(prev => ({ ...prev, relatedLinks: [...(prev.relatedLinks || []), { title: "", url: "" }] })), []);
+    const handleRelatedLinkChange = useCallback((index, field, value) => setTechData(prev => ({ ...prev, relatedLinks: prev.relatedLinks.map((item, i) => i === index ? { ...item, [field]: value } : item) })), []);
+    const handleRemoveRelatedLink = useCallback((index) => setTechData(prev => ({ ...prev, relatedLinks: prev.relatedLinks.filter((_, i) => i !== index) })), []);
+
+    const handleImageUpload = useCallback((e) => {
+        const files = Array.from(e.target.files); const limit = 5;
+        const currentTotal = techData.images.length + newImages.length;
+        if (files.length + currentTotal > limit) { toast.warn(`Max ${limit} images. Already ${currentTotal} selected.`, { position: "top-center" }); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
+        setNewImages(prev => [...prev, ...files.map(f => ({ file: f, previewUrl: URL.createObjectURL(f), caption: "" }))]);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    }, [newImages.length, techData.images.length]);
+
+    const handleExistingCaptionChange = useCallback((index, value) => setTechData(prev => ({ ...prev, images: prev.images.map((img, i) => i === index ? { ...img, caption: value } : img) })), []);
+    const handleNewCaptionChange = useCallback((index, value) => setNewImages(prev => prev.map((img, i) => i === index ? { ...img, caption: value } : img)), []);
+    const handleRemoveExistingImage = useCallback((index) => setTechData(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index) })), []);
+    const handleRemoveNewImage = useCallback((index) => setNewImages(prev => { const img = prev[index]; if (img?.previewUrl) URL.revokeObjectURL(img.previewUrl); return prev.filter((_, i) => i !== index); }), []);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (userRole !== 'admin') { toast.error("Permission Denied."); setError("Permission Denied."); return; }
+        setError(null); setSubmitting(true);
+
+        const processedData = { ...techData };
+        Object.keys(processedData).forEach(key => { if (typeof processedData[key] === 'string') processedData[key] = processedData[key].trim(); });
+
+        if (!processedData.name || !processedData.genre || !String(processedData.trl).trim()) { toast.error("Name, Genre, and TRL are required."); setIsSubmitting(false); return; }
+        const trlNum = Number(processedData.trl);
+        if (isNaN(trlNum)) { toast.error("TRL must be a number."); setIsSubmitting(false); return; }
+        processedData.trl = trlNum;
+        
+        processedData.innovators = (processedData.innovators || []).filter(inv => inv.name?.trim() || inv.mail?.trim());
+        processedData.advantages = (processedData.advantages || []).map(s => s.trim()).filter(Boolean);
+        processedData.applications = (processedData.applications || []).map(s => s.trim()).filter(Boolean);
+        processedData.useCases = (processedData.useCases || []).map(s => s.trim()).filter(Boolean);
+        processedData.relatedLinks = (processedData.relatedLinks || []).filter(link => link.title?.trim() && link.url?.trim());
+        processedData.spotlight = String(processedData.spotlight) === 'true';
+
+        const payload = { ...processedData }; // `images` here refers to existing images being kept/modified
+        payload.newImageData = newImages.map(img => ({ file: img.file, caption: img.caption || "" }));
+
+        try {
+            await updateTechnology(id, payload);
+            toast.success("Technology updated successfully!", { position: "top-center" });
+            setNewImages([]);
+            setTimeout(() => navigate("/admin-dashboard"), 1500);
+        } catch (err) {
+            console.error("Error updating technology:", err); setError(`Update failed: ${err.message}`);
+            toast.error(`Update failed: ${err.message}`, { position: "top-center" });
+            if (err.message.includes("Access Denied") || err.message.includes("token not found")) {
+                setIsAuthenticated(false); setUserRole(null); setTimeout(() => navigate('/login'), 2100);
+            }
+        } finally { setSubmitting(false); }
+    };
+
+    if (loading) {
+        return ( <Layout title="Loading..."><ToastContainer position="top-center" autoClose={3000} /><Box display="flex" justifyContent="center" alignItems="center" sx={{ minHeight: 'calc(100vh - 200px)', p: 3 }}><CircularProgress /><Typography sx={{ ml: 2 }}>Loading Technology Data...</Typography></Box></Layout> );
     }
-  };
 
-  // --- Render Logic ---
+    if (!isPageAccessible || error) { // If page access denied or other critical error
+        return ( <Layout title="Error"><ToastContainer position="top-center" autoClose={3000} /><Paper elevation={3} sx={{ p: 4, borderRadius: 2, textAlign: 'center', margin: "20px auto", maxWidth: '600px' }}><Alert severity="error" sx={{ mb: 3 }}>{error || "Access to this page is restricted."}</Alert><Button variant="outlined" onClick={() => navigate(error && (error.includes("login") || error.includes("Authentication")) ? '/login' : '/admin-dashboard')} sx={{ mr: 1 }}>{error && (error.includes("login") || error.includes("Authentication")) ? 'Go to Login' : 'Back to Dashboard'}</Button>{isPageAccessible && error && !error.toLowerCase().includes("access denied") && !error.toLowerCase().includes("authentication required") && userRole === 'admin' && (<Button variant="contained" onClick={fetchTech}>Try Again</Button>)}</Paper></Layout> );
+    }
 
-  if (loading) {
     return (
-      <Layout title="Edit Technology">
-        <Box display="flex" justifyContent="center" alignItems="center" sx={{ minHeight: 'calc(100vh - 200px)', p: 3 }}>
-          <CircularProgress />
-           <Typography sx={{ ml: 2 }}>Loading Technology Data...</Typography>
-        </Box>
-      </Layout>
-    );
-  }
-
-  return (
-    <Layout title={`Edit Technology: ${techData.name || '...'}`}>
-      <Paper elevation={3} sx={{ p: isMobile ? 2 : 4, borderRadius: 2, maxWidth: 'lg', margin: 'auto' }}>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 1, fontWeight: 'bold', textAlign: 'center' }}>
-          Edit Technology
-        </Typography>
-         <Typography variant="body2" color="textSecondary" sx={{ mb: 3, textAlign: 'center' }}>
-           Modify the details for Technology ID: {id}. Fields marked with * are required.
-         </Typography>
-
-        <form onSubmit={handleSubmit}>
-          <Grid container spacing={3}>
-
-            {/* Section 1: Basic Information */}
-            <Grid item xs={12}>
-                <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 3, borderRadius: 1 }}>
-                    <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Basic Information</Typography>
+        <Layout title={`Edit: ${techData.name || 'Technology'}`}>
+            <ToastContainer position="top-center" autoClose={3000} />
+            <Paper elevation={3} sx={{ p: { xs: 2, sm: 3, md: 4 }, borderRadius: "12px", maxWidth: 'lg', margin: 'auto' }}>
+                <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 1, fontWeight: 'bold', textAlign: 'center' }}>Edit Technology</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 3, textAlign: 'center' }}>Modify details for ID: <strong>{id}</strong> (Docket: {techData.docket || 'N/A'}). Fields * are required.</Typography>
+                <form onSubmit={handleSubmit} noValidate>
                     <Grid container spacing={3}>
-                        <Grid item xs={12}>
-                            <TextField label="Name *" name="name" fullWidth value={techData.name} onChange={handleChange} required />
-                        </Grid>
-                         {/* <Grid item xs={12} sm={6}>
-                            <TextField label="Docket *" name="docket" fullWidth value={techData.docket} onChange={handleChange} required InputLabelProps={{ shrink: !!techData.docket }} />
-                        </Grid> */}
-                        <Grid item xs={12}>
-                            <TextField label="TRL Level *" name="trl" type="number" fullWidth value={techData.trl} onChange={handleChange} required InputLabelProps={{ shrink: !!techData.trl }} helperText="Enter a number (e.g., 1-9)"/>
-                        </Grid>
-                        <Grid item xs={12}>
-                            <TextField label="Description" name="description" fullWidth multiline rows={3} value={techData.description} onChange={handleChange} InputLabelProps={{ shrink: !!techData.description }}/>
-                        </Grid>
-                         <Grid item xs={12} sm={6}>
-                            <TextField label="Genre" name="genre" fullWidth value={techData.genre} onChange={handleChange} InputLabelProps={{ shrink: !!techData.genre }} />
-                         </Grid>
-                         <Grid item xs={12} sm={6}>
-                            <TextField label="Patent" name="patent" fullWidth value={techData.patent} onChange={handleChange} helperText="Enter patent number or status" InputLabelProps={{ shrink: !!techData.patent }}/>
-                         </Grid>
-                         <Grid item xs={12} sm={6}>
-                             {/* --- Spotlight Radio Group --- */}
-                            <FormControl component="fieldset">
-                                <FormLabel component="legend">Spotlight *</FormLabel>
-                                <RadioGroup
-                                    row
-                                    aria-label="spotlight"
-                                    name="spotlight"
-                                    value={techData.spotlight} // Controlled component using string 'true'/'false'
-                                    onChange={handleChange}
-                                >
-                                    <FormControlLabel value="true" control={<Radio />} label="True" />
-                                    <FormControlLabel value="false" control={<Radio />} label="False" />
-                                </RadioGroup>
-                            </FormControl>
-                         </Grid>
-                    </Grid>
-                </Box>
-            </Grid>
+                        <Grid item xs={12}><Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}><Typography variant="h6" gutterBottom sx={{ fontWeight: 500, mb: 2.5 }}>Basic Information</Typography><Grid container spacing={2.5}>
+                            <Grid item xs={12}><TextField required label="Name" name="name" fullWidth value={techData.name} onChange={handleGenericChange} disabled={submitting} /></Grid>
+                            <Grid item xs={12} sm={6}><TextField required label="TRL Level" name="trl" type="number" fullWidth value={techData.trl} onChange={handleGenericChange} helperText="1-9" InputLabelProps={{ shrink: !!techData.trl }} disabled={submitting} /></Grid>
+                            <Grid item xs={12} sm={6}><TextField required label="Genre" name="genre" fullWidth value={techData.genre} onChange={handleGenericChange} InputLabelProps={{ shrink: !!techData.genre }} disabled={submitting} /></Grid>
+                            <Grid item xs={12}><TextField label="Brief Description" name="description" fullWidth multiline rows={3} value={techData.description} onChange={handleGenericChange} InputLabelProps={{ shrink: !!techData.description }} disabled={submitting} /></Grid>
+                            <Grid item xs={12} sm={6}><TextField label="Patent" name="patent" fullWidth value={techData.patent} onChange={handleGenericChange} helperText="Patent number/status" InputLabelProps={{ shrink: !!techData.patent }} disabled={submitting} /></Grid>
+                            <Grid item xs={12} sm={6} sx={{display:'flex', alignItems:'center'}}><FormControl component="fieldset" disabled={submitting}><FormLabel component="legend" sx={{fontSize: '0.8rem', mb: -0.5}}>Spotlight*</FormLabel><RadioGroup row name="spotlight" value={techData.spotlight} onChange={handleGenericChange}><FormControlLabel value="true" control={<Radio size="small"/>} label="Yes" /><FormControlLabel value="false" control={<Radio size="small"/>} label="No" /></RadioGroup></FormControl></Grid>
+                        </Grid></Box></Grid>
 
-            <Grid item xs={12}><Divider sx={{ my: 2 }} /></Grid>
+                        <Grid item xs={12}><Divider light sx={{ my: 0.5 }} /></Grid>
+                        <Grid item xs={12}><Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}><Typography variant="h6" gutterBottom sx={{ fontWeight: 500, mb: 2.5 }}>Innovators</Typography>
+                            {techData.innovators.map((innovator, index) => ( <Grid container spacing={2} key={index} sx={{ mb: 1.5, alignItems: 'center' }}><Grid item xs={12} sm><TextField fullWidth label={`Name ${index + 1}`} value={innovator.name || ""} onChange={(e) => handleInnovatorChange(index, "name", e.target.value)} variant="outlined" size="small" disabled={submitting} /></Grid><Grid item xs={12} sm><TextField fullWidth label="Email (Optional)" type="email" value={innovator.mail || ""} onChange={(e) => handleInnovatorChange(index, "mail", e.target.value)} variant="outlined" size="small" disabled={submitting} /></Grid><Grid item xs="auto">{techData.innovators.length > 1 && <IconButton onClick={() => handleRemoveInnovator(index)} color="error" disabled={submitting}><DeleteIcon /></IconButton>}</Grid></Grid> ))}
+                            <Button variant="outlined" onClick={handleAddInnovator} startIcon={<AddCircleOutlineIcon />} sx={{ mt: 1, textTransform: 'none' }} disabled={submitting}>Add Innovator</Button>
+                        </Box></Grid>
+                        
+                        <Grid item xs={12}><Divider light sx={{ my: 0.5 }} /></Grid>
+                        <Grid item xs={12}><Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}><Typography variant="h6" gutterBottom sx={{ fontWeight: 500, mb: 2.5 }}>Further Details</Typography><Grid container spacing={2.5}>
+                            <Grid item xs={12}><TextField label="Overview" name="overview" fullWidth multiline rows={3} value={techData.overview} onChange={handleGenericChange} InputLabelProps={{ shrink: !!techData.overview }} disabled={submitting} /></Grid>
+                            <Grid item xs={12}><TextField label="Detailed Description" name="detailedDescription" fullWidth multiline rows={5} value={techData.detailedDescription} onChange={handleGenericChange} InputLabelProps={{ shrink: !!techData.detailedDescription }} disabled={submitting} /></Grid>
+                            <Grid item xs={12}><TextField label="Technical Specifications" name="technicalSpecifications" fullWidth multiline rows={3} value={techData.technicalSpecifications} onChange={handleGenericChange} InputLabelProps={{ shrink: !!techData.technicalSpecifications }} disabled={submitting} /></Grid>
+                        </Grid></Box></Grid>
 
-            {/* Section 2: Innovators */}
-            <Grid item xs={12}>
-                <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 3, borderRadius: 1 }}>
-                    <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Innovators</Typography>
-                      {techData.innovators.map((innovator, index) => (
-                        <Grid container spacing={2} key={index} sx={{ mb: 2, alignItems: 'center' }}>
-                           <Grid item xs={12} sm={5}>
-                            <TextField fullWidth label={`Innovator ${index + 1} Name`} value={innovator.name || ""} onChange={(e) => handleInnovatorChange(index, "name", e.target.value)} variant="outlined" size="small" InputLabelProps={{ shrink: !!innovator.name }}/>
-                           </Grid>
-                           <Grid item xs={12} sm={5}>
-                            <TextField fullWidth label="Email" type="email" value={innovator.mail || ""} onChange={(e) => handleInnovatorChange(index, "mail", e.target.value)} variant="outlined" size="small" InputLabelProps={{ shrink: !!innovator.mail }}/>
-                           </Grid>
-                           <Grid item xs={12} sm={2} sx={{ textAlign: isMobile ? 'right' : 'center' }}>
-                            <IconButton onClick={() => handleRemoveInnovator(index)} color="error" aria-label={`Remove Innovator ${index + 1}`}>
-                                <DeleteIcon />
-                            </IconButton>
-                           </Grid>
-                        </Grid>
-                      ))}
-                    <Button variant="outlined" onClick={handleAddInnovator} startIcon={<AddIcon />} sx={{ mt: 1 }}>
-                      Add Innovator
-                    </Button>
-                </Box>
-            </Grid>
-
-            <Grid item xs={12}><Divider sx={{ my: 2 }} /></Grid>
-
-            {/* Section 3: Details & Descriptions */}
-            <Grid item xs={12}>
-              <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 3, borderRadius: 1 }}>
-                 <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Details</Typography>
-                 <Grid container spacing={3}>
-                    <Grid item xs={12}>
-                         <TextField label="Overview" name="overview" fullWidth multiline rows={2} value={techData.overview} onChange={handleChange} InputLabelProps={{ shrink: !!techData.overview }} />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField label="Detailed Description" name="detailedDescription" fullWidth multiline rows={4} value={techData.detailedDescription} onChange={handleChange} InputLabelProps={{ shrink: !!techData.detailedDescription }} />
-                    </Grid>
-                    <Grid item xs={12}>
-                         <TextField label="Advantages" name="advantages" fullWidth value={techData.advantages} onChange={handleChange} helperText="Enter advantages, separated by commas" InputLabelProps={{ shrink: !!techData.advantages }}/>
-                    </Grid>
-                     <Grid item xs={12}>
-                        <TextField label="Applications" name="applications" fullWidth value={techData.applications} onChange={handleChange} helperText="Enter applications, separated by commas" InputLabelProps={{ shrink: !!techData.applications }}/>
-                    </Grid>
-                    <Grid item xs={12}>
-                        <TextField label="Use Cases" name="useCases" fullWidth value={techData.useCases} onChange={handleChange} helperText="Enter use cases, separated by commas" InputLabelProps={{ shrink: !!techData.useCases }}/>
-                    </Grid>
-                     <Grid item xs={12}>
-                        <TextField label="Related Links" name="relatedLinks" fullWidth multiline rows={2} value={techData.relatedLinks} onChange={handleChange} helperText="Format: Title1|URL1, Title2|URL2" InputLabelProps={{ shrink: !!techData.relatedLinks }}/>
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField label="Technical Specifications" name="technicalSpecifications" fullWidth multiline rows={3} value={techData.technicalSpecifications} onChange={handleChange} InputLabelProps={{ shrink: !!techData.technicalSpecifications }}/>
-                    </Grid>
-                 </Grid>
-               </Box>
-             </Grid>
-
-            <Grid item xs={12}><Divider sx={{ my: 2 }} /></Grid>
-
-            {/* Section 4: Images */}
-            <Grid item xs={12}>
-               <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 3, borderRadius: 1 }}>
-                 <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>Images</Typography>
-
-                  {/* Existing Images Display */}
-                  {techData.images && techData.images.length > 0 && (
-                    <Box sx={{ mb: 3 }}>
-                      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'medium' }}>Current Images</Typography>
-                      <Grid container spacing={2}>
-                        {techData.images.map((image, index) => (
-                          <Grid item xs={12} sm={6} md={4} key={`existing-${image.url}-${index}`}>
-                            <Paper elevation={1} sx={{ p: 1.5, position: "relative", height: "100%", display: 'flex', flexDirection: 'column' }}>
-                              <IconButton size="small" sx={{ position: "absolute", top: 4, right: 4, zIndex: 1, bgcolor: "rgba(0,0,0,0.4)", color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.6)'} }} onClick={() => handleRemoveExistingImage(index)} aria-label={`Remove existing image ${index + 1}`}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                              <Box sx={{ height: 160, display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden", bgcolor: theme.palette.grey[200], borderRadius: 1, mb: 1.5 }}>
-                                <img
-                                  src={ image.url.startsWith("http") ? image.url : `${API_BASE_URL}${image.url}` }
-                                  alt={`Existing ${index + 1}`}
-                                  style={{ display: 'block', maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
-                                  onError={(e) => { e.target.onerror = null; e.target.src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"; /* Replace with placeholder or hide */ e.target.style.objectFit = 'scale-down'; e.target.style.width='50%'; e.target.style.height='50%'; }} // Basic error handling
-                                />
-                              </Box>
-                              {/* <TextField fullWidth label="Caption" variant="outlined" size="small" value={image.caption || ""} onChange={(e) => handleExistingCaptionChange(index, e.target.value)} sx={{ mt: 'auto' }} InputLabelProps={{ shrink: !!image.caption }} /> */}
-                            </Paper>
-                          </Grid>
+                        {['advantages', 'applications', 'useCases'].map(fieldName => (
+                            <Grid item xs={12} key={fieldName}><Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}><Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 2, textTransform: 'capitalize' }}>{fieldName.replace(/([A-Z])/g, ' $1')}</Typography>
+                                {(techData[fieldName] || []).map((value, index) => ( <Grid container spacing={1} key={index} sx={{ mb: 1.5, alignItems: 'center' }}><Grid item xs><TextField fullWidth label={`${fieldName.slice(0,-1)} #${index + 1}`} value={value} onChange={(e) => handleStringInArrayChange(fieldName, index, e.target.value)} variant="outlined" size="small" disabled={submitting}/></Grid><Grid item xs="auto">{(techData[fieldName].length > 1 || value) && <IconButton onClick={() => handleRemoveStringFromArray(fieldName, index)} color="error" disabled={submitting}><DeleteIcon /></IconButton>}</Grid></Grid> ))}
+                                <Button variant="outlined" onClick={() => handleAddStringToArray(fieldName)} startIcon={<AddCircleOutlineIcon />} sx={{ mt: 0.5, textTransform: 'none' }} disabled={submitting}>Add {fieldName.slice(0,-1)}</Button>
+                            </Box></Grid>
                         ))}
-                      </Grid>
-                    </Box>
-                  )}
+                        
+                        <Grid item xs={12}><Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}><Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 500, mb: 2 }}>Related Links</Typography>
+                            {(techData.relatedLinks || []).map((link, index) => ( <Grid container spacing={2} key={index} sx={{ mb: 1.5, alignItems: 'center' }}><Grid item xs={12} sm><TextField fullWidth label={`Link Title ${index + 1}`} value={link.title || ""} onChange={(e) => handleRelatedLinkChange(index, "title", e.target.value)} variant="outlined" size="small" disabled={submitting} /></Grid><Grid item xs={12} sm><TextField fullWidth label="URL" type="url" value={link.url || ""} onChange={(e) => handleRelatedLinkChange(index, "url", e.target.value)} variant="outlined" size="small" disabled={submitting} /></Grid><Grid item xs="auto">{(techData.relatedLinks.length > 1 || link.title || link.url) &&<IconButton onClick={() => handleRemoveRelatedLink(index)} color="error" disabled={submitting}><DeleteIcon /></IconButton>}</Grid></Grid> ))}
+                            <Button variant="outlined" onClick={handleAddRelatedLink} startIcon={<AddCircleOutlineIcon />} sx={{ mt: 0.5, textTransform: 'none' }} disabled={submitting}>Add Link</Button>
+                        </Box></Grid>
 
-                  {/* New Images Preview */}
-                  {newImages.length > 0 && (
-                    <Box sx={{ mb: 3, mt: techData.images?.length > 0 ? 4 : 0 }}>
-                      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'medium' }}>New Images (Preview)</Typography>
-                      <Grid container spacing={2}>
-                        {newImages.map((imageObj, index) => (
-                          <Grid item xs={12} sm={6} md={4} key={`new-${index}-${imageObj.file.name}`}>
-                             <Paper elevation={1} sx={{ p: 1.5, position: "relative", height: "100%", display: 'flex', flexDirection: 'column' }}>
-                              <IconButton size="small" sx={{ position: "absolute", top: 4, right: 4, zIndex: 1, bgcolor: "rgba(0,0,0,0.4)", color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.6)'} }} onClick={() => handleRemoveNewImage(index)} aria-label={`Remove new image ${index + 1}`}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                              <Box sx={{ height: 160, display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden", bgcolor: theme.palette.grey[200], borderRadius: 1, mb: 1.5 }}>
-                                <img src={imageObj.previewUrl} alt={`New preview ${index + 1}`} style={{ display: 'block', maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                              </Box>
-                              {/* <TextField fullWidth label="Caption" variant="outlined" size="small" value={imageObj.caption} onChange={(e) => handleNewCaptionChange(index, e.target.value)} helperText={imageObj.file.name} sx={{ mt: 'auto' }} InputLabelProps={{ shrink: !!imageObj.caption }}/> */}
-                             </Paper>
-                          </Grid>
-                        ))}
-                      </Grid>
-                    </Box>
-                  )}
+                        <Grid item xs={12}><Divider light sx={{ my: 0.5 }} /></Grid>
+                        <Grid item xs={12}><Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}><Typography variant="h6" gutterBottom sx={{ fontWeight: 500, mb: 1.5 }}>Images</Typography>
+                            {techData.images && techData.images.length > 0 && (<Box sx={{ mb: 2.5 }}><Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 'medium' }}>Current Images </Typography><Grid container spacing={2}>
+                                {techData.images.map((image, index) => ( <Grid item xs={12} sm={6} md={4} key={`existing-${image.url}-${index}`}><Paper elevation={0} sx={{border: `1px solid ${theme.palette.divider}`, p: 1, position: "relative", height: "100%", display: 'flex', flexDirection: 'column' }}><IconButton size="small" sx={{ position: "absolute", top: 4, right: 4, zIndex: 1, bgcolor: "rgba(0,0,0,0.4)", color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' } }} onClick={() => handleRemoveExistingImage(index)} aria-label={`Remove existing image ${index + 1}`} disabled={submitting}><DeleteIcon fontSize="small" /></IconButton><Box sx={{ height: 150, display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden", bgcolor: theme.palette.grey[100], borderRadius: 1, mb: 1 }}><img src={image.url.startsWith("http") ? image.url : `${API_BASE_URL}${image.url}`} alt={`Existing ${index + 1}`} style={{ display: 'block', maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} onError={(e) => { e.target.style.display='none'; }} /></Box><TextField fullWidth label="Caption" variant="outlined" size="small" value={image.caption || ""} onChange={(e) => handleExistingCaptionChange(index, e.target.value)} sx={{ mt: 'auto' }} InputLabelProps={{ shrink: true }} disabled={submitting} /></Paper></Grid> ))}
+                            </Grid></Box>)}
+                            {newImages.length > 0 && (<Box sx={{ mb: 2.5, mt: techData.images?.length > 0 ? 3 : 0 }}><Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 'medium' }}>New Images (Preview)</Typography><Grid container spacing={2}>
+                                {newImages.map((imageObj, index) => ( <Grid item xs={12} sm={6} md={4} key={`new-${index}`}><Paper elevation={0} sx={{ border: `1px solid ${theme.palette.divider}`,p: 1, position: "relative", height: "100%", display: 'flex', flexDirection: 'column' }}><IconButton size="small" sx={{ position: "absolute", top: 4, right: 4, zIndex: 1, bgcolor: "rgba(0,0,0,0.4)", color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' } }} onClick={() => handleRemoveNewImage(index)} aria-label={`Remove new image ${index + 1}`} disabled={submitting}><DeleteIcon fontSize="small" /></IconButton><Box sx={{ height: 150, display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden", bgcolor: theme.palette.grey[100], borderRadius: 1, mb: 1 }}><img src={imageObj.previewUrl} alt={`New preview ${index + 1}`} style={{ display: 'block', maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /></Box><TextField fullWidth label="Caption" variant="outlined" size="small" value={imageObj.caption} onChange={(e) => handleNewCaptionChange(index, e.target.value)} helperText={(imageObj.file.name || "").substring(0,20)+'...'} sx={{ mt: 'auto' }} InputLabelProps={{ shrink: true }} disabled={submitting} /></Paper></Grid> ))}
+                            </Grid></Box>)}
+                            <Button variant="outlined" component="label" startIcon={<AddPhotoAlternateIcon />} sx={{ mt: 1, textTransform:'none' }} disabled={submitting || (techData.images.length + newImages.length >= 5)}>Add New Images (Max 5 Total)<input type="file" accept="image/*" multiple hidden ref={fileInputRef} onChange={handleImageUpload} /></Button>
+                        </Box></Grid>
 
-                  {/* Image Upload Button */}
-                   <Button variant="outlined" component="label" startIcon={<AddPhotoAlternateIcon />} sx={{ mt: 1 }}>
-                     Add New Images
-                     <input type="file" accept="image/*" multiple hidden ref={fileInputRef} onChange={handleImageUpload} />
-                   </Button>
-
-               </Box>
-             </Grid>
-
-
-            {/* Submit Button */}
-            <Grid item xs={12} sx={{ textAlign: "center", mt: 4 }}>
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                disabled={submitting} // Disable button while submitting
-                sx={{
-                  minWidth: 150, // Ensure minimum width
-                  borderRadius: 2,
-                  py: 1.5,
-                  px: 5,
-                  fontWeight: 'bold',
-                  boxShadow: theme.shadows[3],
-                  background: "linear-gradient(45deg, #212121 30%, #424242 90%)",
-                  color: "white",
-                  transition: "all 0.3s",
-                  '&:hover': {
-                    boxShadow: theme.shadows[6],
-                    transform: "translateY(-2px)",
-                    background: "linear-gradient(45deg, #000000 30%, #333333 90%)",
-                  },
-                   '&:disabled': {
-                     background: theme.palette.action.disabledBackground,
-                     boxShadow: 'none',
-                     color: theme.palette.action.disabled
-                   }
-                }}
-              >
-                {submitting ? <CircularProgress size={24} color="inherit" /> : "Save Changes"}
-              </Button>
-            </Grid>
-          </Grid>
-        </form>
-      </Paper>
-    </Layout>
-  );
+                        <Grid item xs={12} sx={{ textAlign: "center", mt: 3, mb:1 }}>
+                            <Button type="submit" variant="contained" size="large" disabled={submitting} sx={{ minWidth: 180, borderRadius: "8px", py: 1.25, px: 5, fontWeight: 'bold', boxShadow: theme.shadows[2], bgcolor:'primary.dark', color: "white", transition: "all 0.3s", '&:hover': { boxShadow: theme.shadows[4], transform: "translateY(-2px)", bgcolor:'primary.main' }, '&:disabled': { background: theme.palette.action.disabledBackground } }}>{submitting ? <CircularProgress size={24} color="inherit" /> : "Save Changes"}</Button>
+                            <Button variant="outlined" size="large" onClick={() => navigate("/admin-dashboard")} disabled={submitting} sx={{ ml: 2, py: 1.25, px: 5, borderRadius: "8px" }}>Cancel</Button>
+                        </Grid>
+                    </Grid>
+                </form>
+            </Paper>
+        </Layout>
+    );
 };
 
 export default EditTechnology;
-
