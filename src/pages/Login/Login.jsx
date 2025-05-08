@@ -117,6 +117,7 @@ const Login = () => {
             // Store the user object (which includes the role)
             if (result.user) {
                 localStorage.setItem("user", JSON.stringify(result.user));
+                console.log(result.user)
             } else {
                  // Handle case where backend might not send user object (though it should)
                  console.warn("User object not received in login response.");
