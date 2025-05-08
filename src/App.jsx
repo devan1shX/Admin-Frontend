@@ -10,6 +10,7 @@ import EditEvents from "./pages/EditEvents";
 import AddEvents from "./pages/AddEvents";
 import EditLinks from "./pages/EditLinks";
 import Login from "./pages/Login/Login";
+import ShowDetails from "./pages/ShowDetails";
 
 function App() {
   const ProtectedRoute = ({ children }) => {
@@ -42,6 +43,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tech-detail/:id"
+          element={
+            <ProtectedRoute>
+              <ShowDetails />
             </ProtectedRoute>
           }
         />
