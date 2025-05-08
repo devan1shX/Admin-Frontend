@@ -17,7 +17,7 @@ import {
     ThemeProvider,
     CssBaseline,
     Link,
-    CircularProgress
+    CircularProgress // Added for loading indicator
 } from "@mui/material"
 import { Visibility, VisibilityOff, LockOutlined } from "@mui/icons-material"
 import { ToastContainer, toast } from "react-toastify"
@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import logo from "../../assets/iiitdlogo.png" // Make sure this path is correct
 
 // Define API_BASE_URL here
-const API_BASE_URL = "http://192.168.1.148:5001"; // Ensure this is accessible
+const API_BASE_URL = "http://192.168.1.148:5001";
 
 const Login = () => {
     const [loginInfo, setLoginInfo] = useState({
@@ -34,11 +34,11 @@ const Login = () => {
         password: "",
     })
     const [showPassword, setShowPassword] = useState(false)
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false); // Added loading state
     const navigate = useNavigate()
     const isMobile = useMediaQuery("(max-width:600px)")
 
-    // Custom theme (condensed for brevity, assuming it's correct from your original code)
+    // Custom theme
     const theme = createTheme({
         palette: {
             primary: { main: "#2A9D8F" },
@@ -52,120 +52,96 @@ const Login = () => {
         },
         shape: { borderRadius: 8 },
         components: {
-            MuiButton: { styleOverrides: { root: { boxShadow: "none", "&:hover": { boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)" }}}},
-            MuiCard: { styleOverrides: { root: { boxShadow: "0px 4px 20px rgba(0, 0, 0, 0.08)" }}},
-            MuiTextField: { styleOverrides: { root: { "& .MuiOutlinedInput-root": { "&.Mui-focused fieldset": { borderColor: "#2A9D8F" }}}}},
+            MuiButton: {
+                styleOverrides: {
+                    root: {
+                        boxShadow: "none",
+                        "&:hover": { boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)" },
+                    },
+                },
+            },
+            MuiCard: {
+                styleOverrides: {
+                    root: { boxShadow: "0px 4px 20px rgba(0, 0, 0, 0.08)" },
+                },
+            },
+            MuiTextField: {
+                styleOverrides: {
+                    root: {
+                        "& .MuiOutlinedInput-root": {
+                            "&.Mui-focused fieldset": { borderColor: "#2A9D8F" },
+                        },
+                    },
+                },
+            },
         },
-    });
+    })
 
+    // Handle input changes
     const handleChange = (e) => {
         const { name, value } = e.target
         setLoginInfo((prev) => ({ ...prev, [name]: value }))
     }
 
+    // Handle form submission
     const handleSubmit = async (e) => {
-        e.preventDefault();
-        console.log("Login form submitted with:", loginInfo);
-
+        e.preventDefault(); // Prevent default form submission
+        // Basic client-side validation
         if (!loginInfo.email || !loginInfo.password) {
             toast.error("Please enter both email and password.", { position: "top-center" });
-            console.warn("Validation failed: Email or password missing.");
             return;
         }
-
-        setLoading(true);
-        console.log("Attempting login, setLoading to true.");
-
+        setLoading(true); // Set loading state
         try {
+            // Use the defined API_BASE_URL
             const url = `${API_BASE_URL}/auth/login`;
-            console.log("Fetching URL:", url);
-
             const response = await fetch(url, {
                 method: "POST",
-                mode: "cors",
+                mode: "cors", // Ensure CORS is handled server-side
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(loginInfo),
+                body: JSON.stringify(loginInfo), // Send login data
             });
-
-            console.log("Login API Raw Response:", response);
-            const result = await response.json();
-
-            // DETAILED LOGGING OF API RESPONSE:
-            console.log("Login API Response Status Code:", response.status);
-            console.log("Login API Response OK (response.ok):", response.ok);
-            console.log("Login API Response Body (parsed result):", JSON.stringify(result, null, 2)); // Pretty print JSON
-            console.log("Token from API (result.token):", result.token);
-            console.log("User from API (result.user):", result.user);
-
+            const result = await response.json(); // Parse JSON response
 
             if (!response.ok) {
-                console.error("Login failed - Server responded with non-OK status:", response.status, "Result:", result);
-                toast.error(result.message || `Login failed. Status: ${response.status}`, { position: "top-center" });
-                setLoading(false);
-                console.log("setLoading to false due to non-OK response.");
-                return;
+                // Use error message from backend if available, otherwise generic message
+                toast.error(result.message || "Login failed. Please check credentials.", { position: "top-center" });
+                setLoading(false); // Reset loading state on failure
+                return; // Stop execution
             }
 
-            // --- Login Potentially Successful (response.ok is true) ---
-
-            // Explicitly check if token exists and is a non-empty string
-            if (!result.token || typeof result.token !== 'string' || result.token.trim() === "") {
-                console.error("Login error: Token missing or invalid in API response despite response.ok.", "Received token:", result.token);
-                toast.error("Authentication error: Token not received from server.", { position: "top-center" });
-                localStorage.removeItem("token"); // Ensure any old/bad token is cleared
-                localStorage.removeItem("user");
-                console.log("Cleared token and user from localStorage due to missing/invalid token in response.");
-                setLoading(false);
-                console.log("setLoading to false due to missing/invalid token.");
-                return;
-            }
-
-            console.log("Login successful! Token received:", result.token);
+            // --- Login Successful ---
             toast.success("Login successful! Redirecting...", { position: "top-center", autoClose: 1500 });
-
+            // Store the token
             localStorage.setItem("token", result.token);
-            console.log("Token SET in localStorage. Current value:", localStorage.getItem("token"));
-
-
-            if (result.user && typeof result.user === 'object') {
+            // Store the user object (which includes the role)
+            if (result.user) {
                 localStorage.setItem("user", JSON.stringify(result.user));
-                console.log("User object SET in localStorage. Current value:", localStorage.getItem("user"));
             } else {
-                console.warn("User object not received or not an object in login response:", result.user);
-                // Old logic that caused loops if user object was missing:
-                // localStorage.removeItem("token");
-                // localStorage.removeItem("user");
-                // toast.error("Login error: User data missing from response.", { position: "top-center" });
-                // setLoading(false);
-                // return;
-                // New approach: If token is present, proceed but log a warning.
-                // The application must be able to handle a missing user object if this is acceptable.
-                toast.warn("User details not fully provided by server, but login token processed.", { position: "top-center", autoClose: 2500 });
-                localStorage.removeItem("user"); // Clear any stale user data
-                console.log("User object was missing/invalid; ensured 'user' is removed from localStorage.");
+                 // Handle case where backend might not send user object (though it should)
+                 console.warn("User object not received in login response.");
+                 // Clear potentially stale data if login succeeded but user data is missing
+                 localStorage.removeItem("token");
+                 localStorage.removeItem("user");
+                 toast.error("Login error: User data missing from response.", { position: "top-center" });
+                 setLoading(false);
+                 return;
             }
 
-            console.log("Preparing to navigate to /admin-dashboard in 1.5 seconds.");
+            // Redirect after a short delay
             setTimeout(() => {
-                console.log("Executing navigation to /admin-dashboard. Token in localStorage:", localStorage.getItem("token"));
-                navigate("/admin-dashboard");
-                // setLoading(false) is generally not needed here if the component unmounts.
-                // If navigation could fail and stay on this page, then it would be.
-            }, 1500);
+                navigate("/admin-dashboard"); // Redirect to the main dashboard
+                // No need to setLoading(false) here as the component will unmount
+            }, 1500); // Match toast duration
 
         } catch (err) {
-            console.error("Error during login fetch request:", err);
-            // This catch block handles network errors or errors if response.json() fails
-            toast.error("Login request failed. Could not connect or parse server response.", { position: "top-center" });
-            setLoading(false);
-            console.log("setLoading to false due to exception in fetch/JSON parse.");
+            console.error("Error during login request:", err);
+            toast.error("Login failed. Could not connect to the server.", { position: "top-center" });
+            setLoading(false); // Reset loading state on network/fetch error
         }
-        // If we reach here after a successful try-block navigation timeout is set,
-        // setLoading will naturally be true until navigation.
-        // If an error path within try didn't return, ensure setLoading(false) is called.
-        // However, all error paths in the try block above *do* call setLoading(false) and return.
     };
 
+    // Toggle password visibility
     const togglePasswordVisibility = () => {
         setShowPassword((prev) => !prev)
     }
@@ -173,70 +149,128 @@ const Login = () => {
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
+            {/* ToastContainer for notifications */}
             <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="light" />
             <Box
                 sx={{
                     minHeight: "100vh",
-                    overflow: "hidden",
+                    overflow: "hidden", // Prevent body scroll
                     display: "flex",
                     flexDirection: "column",
                     backgroundColor: "background.default",
                 }}
             >
+                {/* Header */}
                 <Box
                     component="header"
                     sx={{
-                        height: 70, px: 3, borderBottom: "1px solid #e0e0e0", backgroundColor: "#fff",
-                        display: "flex", justifyContent: "center", alignItems: "center",
-                        position: "sticky", top: 0, zIndex: 1100, boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                        height: 70,
+                        px: 3,
+                        borderBottom: "1px solid #e0e0e0",
+                        backgroundColor: "#fff",
+                        display: "flex",
+                        justifyContent: "center", // Center logo horizontally
+                        alignItems: "center",
+                        position: "sticky", // Make header sticky if needed
+                        top: 0,
+                        zIndex: 1100, // Ensure header is above content
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
                     }}
                 >
                     <Box
-                        component="img" src={logo} alt="IIIT Delhi Logo"
-                        sx={{ maxHeight: '80%', maxWidth: 180, objectFit: "contain" }}
+                        component="img"
+                        src={logo}
+                        alt="IIIT Delhi Logo"
+                        sx={{
+                            maxHeight: '80%', // Control logo size by height
+                            maxWidth: 180,
+                            objectFit: "contain",
+                        }}
                     />
                 </Box>
 
+                {/* Main Login Form Area */}
                 <Container maxWidth="xs" sx={{ flex: 1, display: 'flex', alignItems: 'center', py: 4 }}>
-                    <Box sx={{ width: '100%', display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <Box
+                        sx={{
+                            width: '100%', // Ensure box takes full width of container
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                        }}
+                    >
                         <Paper
-                            elevation={3}
+                            elevation={3} // Add a bit more elevation
                             sx={{
-                                width: "100%", overflow: "hidden", borderRadius: 2,
+                                width: "100%",
+                                overflow: "hidden",
+                                borderRadius: 2, // Consistent border radius
                                 transition: "box-shadow 0.3s ease-in-out",
-                                '&:hover': { boxShadow: theme.shadows[6] }
+                                '&:hover': { // Optional: subtle hover effect
+                                    boxShadow: theme.shadows[6],
+                                }
                             }}
                         >
-                            <Box sx={{ p: 3, background: "linear-gradient(135deg, #2A9D8F 0%, #238A7E 100%)", color: "white", textAlign: "center" }}>
+                            {/* Form Header */}
+                            <Box
+                                sx={{
+                                    p: 3,
+                                    background: "linear-gradient(135deg, #2A9D8F 0%, #238A7E 100%)",
+                                    color: "white",
+                                    textAlign: "center",
+                                }}
+                            >
                                 <LockOutlined sx={{ fontSize: 32, mb: 1 }} />
-                                <Typography variant="h5" component="h1" fontWeight="500">Admin Panel Sign In</Typography>
-                                <Typography variant="body2" sx={{ mt: 0.5, opacity: 0.9 }}>Enter your credentials below</Typography>
+                                <Typography variant="h5" component="h1" fontWeight="500">
+                                    Admin Panel Sign In
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 0.5, opacity: 0.9 }}>
+                                    Enter your credentials below
+                                </Typography>
                             </Box>
 
-                            <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
-                                <form onSubmit={handleSubmit} noValidate>
-                                    <Grid container spacing={2.5}>
+                            {/* Form Content */}
+                            <CardContent sx={{ p: { xs: 2, sm: 4 } }}> {/* Responsive padding */}
+                                <form onSubmit={handleSubmit} noValidate> {/* Add noValidate to disable browser validation if using custom */}
+                                    <Grid container spacing={2.5}> {/* Adjusted spacing */}
                                         <Grid item xs={12}>
                                             <TextField
-                                                fullWidth required id="email" label="Email Address" name="email" type="email"
-                                                autoComplete="email" variant="outlined" value={loginInfo.email}
-                                                onChange={handleChange} disabled={loading}
+                                                fullWidth
+                                                required
+                                                id="email" // Add id for accessibility
+                                                label="Email Address"
+                                                name="email"
+                                                type="email"
+                                                autoComplete="email" // Help browser auto-fill
+                                                variant="outlined"
+                                                value={loginInfo.email}
+                                                onChange={handleChange}
+                                                disabled={loading} // Disable when loading
                                                 InputProps={{ sx: { borderRadius: 1 } }}
                                             />
                                         </Grid>
                                         <Grid item xs={12}>
                                             <TextField
-                                                fullWidth required id="password" label="Password" name="password"
+                                                fullWidth
+                                                required
+                                                id="password" // Add id for accessibility
+                                                label="Password"
+                                                name="password"
                                                 type={showPassword ? "text" : "password"}
-                                                autoComplete="current-password" variant="outlined"
-                                                value={loginInfo.password} onChange={handleChange} disabled={loading}
+                                                autoComplete="current-password" // Help browser auto-fill
+                                                variant="outlined"
+                                                value={loginInfo.password}
+                                                onChange={handleChange}
+                                                disabled={loading} // Disable when loading
                                                 InputProps={{
                                                     sx: { borderRadius: 1 },
                                                     endAdornment: (
                                                         <InputAdornment position="end">
                                                             <IconButton
                                                                 aria-label={showPassword ? "Hide password" : "Show password"}
-                                                                onClick={togglePasswordVisibility} edge="end" disabled={loading}
+                                                                onClick={togglePasswordVisibility}
+                                                                edge="end"
+                                                                disabled={loading}
                                                             >
                                                                 {showPassword ? <VisibilityOff /> : <Visibility />}
                                                             </IconButton>
@@ -247,23 +281,31 @@ const Login = () => {
                                         </Grid>
                                         <Grid item xs={12}>
                                             <Button
-                                                fullWidth type="submit" variant="contained" color="primary" size="large" disabled={loading}
+                                                fullWidth
+                                                type="submit"
+                                                variant="contained"
+                                                color="primary"
+                                                size="large"
+                                                disabled={loading} // Disable button when loading
                                                 sx={{
-                                                    py: 1.5, borderRadius: 1, fontWeight: "medium",
+                                                    py: 1.5,
+                                                    borderRadius: 1,
+                                                    fontWeight: "medium",
                                                     background: "linear-gradient(90deg, #2A9D8F 0%, #238A7E 100%)",
-                                                    transition: "all 0.2s ease-in-out", position: 'relative',
+                                                    transition: "all 0.2s ease-in-out",
+                                                    position: 'relative', // For loader positioning
                                                     '&:hover': {
                                                         background: "linear-gradient(90deg, #238A7E 0%, #2A9D8F 100%)",
-                                                        transform: "translateY(-1px)", boxShadow: "0 2px 6px rgba(42, 157, 143, 0.3)",
+                                                        transform: "translateY(-1px)", // Subtle lift
+                                                        boxShadow: "0 2px 6px rgba(42, 157, 143, 0.3)",
                                                     },
-                                                    '&.Mui-disabled': {
+                                                    '&.Mui-disabled': { // Style disabled state
                                                         background: theme.palette.action.disabledBackground,
-                                                        color: theme.palette.action.disabled, // Ensure text color changes for disabled
                                                         cursor: 'not-allowed',
                                                     }
                                                 }}
                                             >
-                                                {loading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : "Sign In"}
+                                                {loading ? <CircularProgress size={24} color="inherit" /> : "Sign In"}
                                             </Button>
                                         </Grid>
                                     </Grid>
