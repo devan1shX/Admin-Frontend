@@ -1,24 +1,76 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
     TextField, Button, Paper, Grid, Typography, Box, Radio,
-    RadioGroup, FormControlLabel, FormControl, FormLabel, CircularProgress
+    RadioGroup, FormControlLabel, FormControl, FormLabel, CircularProgress, Alert,
+    useTheme // Added useTheme
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
+// Assuming firebase.js is in src/ and this file is in src/pages/
+// import { auth } from "../firebase"; // auth is not directly used here
 
 const API_BASE_URL = "http://192.168.1.148:5001";
 
-const getToken = () => {
-    return localStorage.getItem("token");
+const getUserInfoFromStorage = () => {
+    const userString = localStorage.getItem("user");
+    if (userString) {
+        try {
+            return JSON.parse(userString);
+        } catch (e) {
+            console.error("Failed to parse user info from localStorage", e);
+            localStorage.removeItem("user");
+            localStorage.removeItem("token");
+            return null;
+        }
+    }
+    return null;
 };
+
+const getTokenFromStorage = () => localStorage.getItem("token");
+
+const addEventAPI = async (newEventData) => {
+    const token = getTokenFromStorage();
+    if (!token) {
+        throw new Error("Authentication token not found. Please log in.");
+    }
+
+    // Client-side permission check (UX improvement, server enforces actual security)
+    const currentUserInfo = getUserInfoFromStorage();
+    if (!(currentUserInfo?.addEvent || currentUserInfo?.role === 'superAdmin')) {
+        throw new Error("Permission Denied: You are not authorized to add events.");
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/events`, {
+        method: "POST",
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newEventData),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: `Request failed with status ${response.status}` }));
+        console.error("Failed to add event. Status:", response.status, "Body:", errorBody);
+        throw new Error(errorBody.message || `Failed to add event. Status: ${response.status}`);
+    }
+    return await response.json();
+};
+
 
 const AddEvents = () => {
     const navigate = useNavigate();
+    const theme = useTheme(); // Added useTheme
+
+    const [userInfo, setUserInfo] = useState(() => getUserInfoFromStorage());
+    const [isPageAccessible, setIsPageAccessible] = useState(false);
+    const [loadingPage, setLoadingPage] = useState(true);
+    const [pageError, setPageError] = useState(null);
+
     const [eventData, setEventData] = useState({
         title: "",
         month: "",
@@ -27,18 +79,48 @@ const AddEvents = () => {
         time: "",
         description: "",
         registration: "",
-        isActive: "true",
+        isActive: "true", // Default to true (Upcoming)
     });
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const canUserAddEvent = useMemo(() => {
+        return userInfo?.addEvent || userInfo?.role === 'superAdmin';
+    }, [userInfo]);
+
     useEffect(() => {
-        const token = getToken();
-        if (!token) {
-            toast.error("Authentication required. Redirecting to login...", { position: "top-center", autoClose: 2000 });
-            // setTimeout(() => navigate('/login'), 2000); // Optional: redirect if not authenticated
+        const currentUserInfo = getUserInfoFromStorage();
+        const token = getTokenFromStorage();
+
+        if (currentUserInfo && token) {
+            setUserInfo(currentUserInfo); // Set userInfo for canUserAddEvent to use
+            // Permission check will be done in the next effect that depends on canUserAddEvent
+        } else {
+            toast.error("Authentication required. Redirecting to login.", { position: "top-center", autoClose: 2000 });
+            setPageError("Authentication required.");
+            setIsPageAccessible(false);
+            setLoadingPage(false);
+            setTimeout(() => navigate('/login'), 2100);
         }
     }, [navigate]);
+
+    useEffect(() => {
+        if (userInfo) { // This effect runs once userInfo is set
+            if (canUserAddEvent) {
+                setIsPageAccessible(true);
+            } else {
+                setPageError("Access Denied: You do not have permission to add events.");
+                toast.error("Access Denied: Insufficient permissions.", { position: "top-center" });
+                setIsPageAccessible(false);
+                setTimeout(() => navigate('/admin-dashboard'), 3000);
+            }
+        }
+        // Only set loadingPage to false after permission check is done based on userInfo
+        if (userInfo !== null) { // Check if userInfo has been attempted to be loaded
+             setLoadingPage(false);
+        }
+    }, [userInfo, canUserAddEvent, navigate]);
+
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -64,20 +146,16 @@ const AddEvents = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!canUserAddEvent) {
+            toast.error("Permission Denied. You cannot add events.");
+            return;
+        }
         setErrors({});
 
         const validationErrors = validate();
         if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
             toast.warn("Please fill in all required fields.", { position: "top-center" });
-            return;
-        }
-
-        const token = getToken();
-        if (!token) {
-            toast.error("Authentication required. Please log in again.", { position: "top-center" });
-            setErrors({ submit: "Authentication required." });
-            // setTimeout(() => navigate('/login'), 2000); // Optional: redirect
             return;
         }
 
@@ -89,42 +167,26 @@ const AddEvents = () => {
         };
 
         try {
-            const response = await axios.post(`${API_BASE_URL}/events`, dataToSend, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            console.log("Event created:", response.data);
+            await addEventAPI(dataToSend);
             toast.success("Event added successfully!", { position: "top-center" });
-
             setEventData({
                 title: "", month: "", day: "", location: "", time: "",
                 description: "", registration: "", isActive: "true",
             });
             setErrors({});
             setTimeout(() => navigate("/admin-events"), 1000);
-
         } catch (error) {
             console.error("Error creating event", error);
             let errorMsg = "Failed to create event. Please try again.";
-            if (error.response) {
-                console.error("Error data:", error.response.data);
-                console.error("Error status:", error.response.status);
-                errorMsg = error.response.data?.message || errorMsg;
-                if (error.response.status === 409) {
-                    errorMsg = error.response.data?.message || "An event with this title and day already exists.";
-                } else if (error.response.status === 401 || error.response.status === 403) {
-                    errorMsg = "Authentication failed or session expired. Please log in again.";
-                    localStorage.removeItem("user");
-                    localStorage.removeItem("token");
-                    // setTimeout(() => navigate('/login'), 2000); // Optional: redirect
-                }
-            } else if (error.request) {
-                console.error("Error request:", error.request);
-                errorMsg = "Network error. Could not connect to the server.";
-            } else {
-                console.error('Error message:', error.message);
+            // error.response might not exist if using fetch directly, error itself is the response or network error
+            if (error.message) {
+                errorMsg = error.message;
+            }
+            
+            if (errorMsg.includes("Access Denied") || errorMsg.includes("token not found") || errorMsg.includes("Authentication failed")) {
+                 localStorage.removeItem("user");
+                 localStorage.removeItem("token");
+                 setTimeout(() => navigate('/login'), 2000);
             }
             setErrors({ submit: errorMsg });
             toast.error(errorMsg, { position: "top-center" });
@@ -132,6 +194,14 @@ const AddEvents = () => {
             setIsSubmitting(false);
         }
     };
+    
+    if (loadingPage) {
+        return ( <Layout title="Loading..."><ToastContainer position="top-center" autoClose={3000} /><Box display="flex" justifyContent="center" alignItems="center" sx={{ minHeight: 'calc(100vh - 200px)', p: 3 }}><CircularProgress /><Typography sx={{ ml: 2 }}>Verifying Access...</Typography></Box></Layout> );
+    }
+
+    if (!isPageAccessible) {
+        return ( <Layout title="Access Denied"><ToastContainer position="top-center" autoClose={3000} /><Paper elevation={3} sx={{ p: 4, borderRadius: 2, textAlign: 'center', margin: "20px auto", maxWidth: '600px' }}><Alert severity="error" sx={{ mb: 3 }}>{pageError || "You do not have permission to access this page."}</Alert><Button variant="outlined" onClick={() => navigate(pageError && (pageError.includes("login") || pageError.includes("Authentication")) ? '/login' : '/admin-dashboard')} sx={{ mr: 1 }}>{pageError && (pageError.includes("login") || pageError.includes("Authentication")) ? 'Go to Login' : 'Back to Dashboard'}</Button></Paper></Layout> );
+    }
 
     return (
         <Layout title="Add New Event">
@@ -168,7 +238,7 @@ const AddEvents = () => {
                                 value={eventData.month}
                                 onChange={handleChange}
                                 error={Boolean(errors.month)}
-                                helperText={errors.month || " "}
+                                helperText={errors.month || "e.g., January, Feb"}
                                 disabled={isSubmitting}
                             />
                         </Grid>
@@ -181,7 +251,7 @@ const AddEvents = () => {
                                 value={eventData.day}
                                 onChange={handleChange}
                                 error={Boolean(errors.day)}
-                                helperText={errors.day || " "}
+                                helperText={errors.day || "e.g., 01, 15, 31"}
                                 disabled={isSubmitting}
                             />
                         </Grid>
@@ -207,7 +277,7 @@ const AddEvents = () => {
                                 value={eventData.time}
                                 onChange={handleChange}
                                 error={Boolean(errors.time)}
-                                helperText={errors.time || " "}
+                                helperText={errors.time || "e.g., 10:00 AM - 02:00 PM"}
                                 disabled={isSubmitting}
                             />
                         </Grid>
@@ -285,6 +355,7 @@ const AddEvents = () => {
                                     },
                                     '&.Mui-disabled': {
                                         background: (theme) => theme.palette.action.disabledBackground,
+                                        color: (theme) => theme.palette.action.disabled
                                     }
                                 }}
                             >

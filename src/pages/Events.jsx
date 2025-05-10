@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -12,10 +12,11 @@ import { Search, Add, Edit, Delete, Login as LoginIcon } from "@mui/icons-materi
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
+import { auth, signOut as firebaseSignOut } from "../firebase"; // Assuming firebase.js is in src/
 
 const API_BASE_URL = "http://192.168.1.148:5001";
 
-const getUserInfo = () => {
+const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");
     if (userString) {
         try {
@@ -30,12 +31,12 @@ const getUserInfo = () => {
     return null;
 };
 
-const getToken = () => {
+const getTokenFromStorage = () => {
     return localStorage.getItem("token");
-}
+};
 
-const getEvents = async () => {
-    const token = getToken();
+const getEventsAPI = async () => {
+    const token = getTokenFromStorage();
     if (!token) {
         throw new Error("Authentication token not found. Please log in.");
     }
@@ -45,20 +46,28 @@ const getEvents = async () => {
         }
     });
     if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || `Failed to fetch events (Status: ${response.status})`;
         if (response.status === 401 || response.status === 403) {
             console.error("Unauthorized or Forbidden access fetching events.");
-            throw new Error("Access Denied. Your session might have expired.");
+            throw new Error(errorData.message || "Access Denied. Your session might have expired.");
         }
-        throw new Error(`Failed to fetch events (Status: ${response.status})`);
+        throw new Error(errorMessage);
     }
     return await response.json();
-}
+};
 
 const deleteEventAPI = async (title, day) => {
-    const token = getToken();
+    const token = getTokenFromStorage();
     if (!token) {
         throw new Error("Authentication token not found. Please log in.");
     }
+    // Client-side permission check (UX, server enforces actual security)
+    const currentUserInfo = getUserInfoFromStorage();
+    if (!(currentUserInfo?.deleteEvent || currentUserInfo?.role === 'superAdmin')) {
+        throw new Error("Permission Denied: You are not authorized to delete events.");
+    }
+
     const encodedTitle = encodeURIComponent(title);
     const encodedDay = encodeURIComponent(day);
 
@@ -73,24 +82,25 @@ const deleteEventAPI = async (title, day) => {
         try {
             const errorData = await response.json();
             errorMsg = errorData.message || errorMsg;
-        } catch (e) { /* Ignore */ }
-        if (response.status === 403) {
-            errorMsg = "Permission denied to delete this event.";
+        } catch (e) { /* Ignore if parsing fails */ }
+        
+        if (response.status === 403) { // Server already checked permission
+            errorMsg = "Permission denied by server to delete this event.";
         } else if (response.status === 401) {
             errorMsg = "Authentication failed. Please log in again.";
         }
         throw new Error(errorMsg);
     }
     return await response.json().catch(() => ({ message: "Event deleted successfully" }));
-}
+};
 
 const Events = () => {
     const navigate = useNavigate();
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-    const [userRole, setUserRole] = useState(null);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [userInfo, setUserInfo] = useState(() => getUserInfoFromStorage());
+    const [isAuthenticated, setIsAuthenticated] = useState(!!(getTokenFromStorage() && userInfo));
 
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -103,22 +113,25 @@ const Events = () => {
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [eventToDelete, setEventToDelete] = useState(null);
 
+    const canAddEvent = useMemo(() => userInfo?.addEvent || userInfo?.role === 'superAdmin', [userInfo]);
+    const canEditEvent = useMemo(() => userInfo?.editEvent || userInfo?.role === 'superAdmin', [userInfo]);
+    const canDeleteEvent = useMemo(() => userInfo?.deleteEvent || userInfo?.role === 'superAdmin', [userInfo]);
+
     useEffect(() => {
-        const token = getToken();
-        const userInfo = getUserInfo();
-        if (token && userInfo && userInfo.role) {
-            setUserRole(userInfo.role);
+        const token = getTokenFromStorage();
+        const currentUserInfo = getUserInfoFromStorage();
+        if (token && currentUserInfo && currentUserInfo.uid) {
+            setUserInfo(currentUserInfo);
             setIsAuthenticated(true);
-            setLoading(true);
         } else {
             setIsAuthenticated(false);
-            setUserRole(null);
-            setLoading(false);
-            setData([]);
-            localStorage.removeItem("eventsData");
-            console.warn("User not authenticated or role missing for Events page.");
+            setUserInfo(null);
+            setData([]); // Clear data if not authenticated
+            if (window.location.pathname !== "/login" && window.location.pathname !== "/signup") {
+                navigate("/login");
+            }
         }
-    }, []);
+    }, [navigate]);
 
     const getAllEvents = useCallback(async () => {
         if (!isAuthenticated) {
@@ -128,12 +141,11 @@ const Events = () => {
         setLoading(true);
         setError(null);
         try {
-            const res = await getEvents();
+            const res = await getEventsAPI();
             if (Array.isArray(res)) {
                 setData(res);
                 localStorage.setItem("eventsData", JSON.stringify(res));
             } else {
-                console.error("Received unexpected data format for events:", res);
                 setData([]);
                 setError("Received invalid data format for events.");
             }
@@ -142,20 +154,25 @@ const Events = () => {
             setError(err.message || "Could not fetch events.");
             setData([]);
             if (err.message.includes("Access Denied") || err.message.includes("token not found")) {
-                setIsAuthenticated(false);
-                setUserRole(null);
+                toast.error(err.message + " Redirecting to login.", { autoClose: 2500 });
+                await firebaseSignOut(auth).catch(console.error);
                 localStorage.removeItem("user");
                 localStorage.removeItem("token");
                 localStorage.removeItem("eventsData");
+                setIsAuthenticated(false);
+                setUserInfo(null);
+                setTimeout(() => navigate("/login"), 2600);
             }
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, navigate]);
 
     useEffect(() => {
         if (isAuthenticated) {
             getAllEvents();
+        } else {
+            setLoading(false); // Ensure loading stops if not authenticated
         }
     }, [isAuthenticated, getAllEvents]);
 
@@ -167,11 +184,11 @@ const Events = () => {
         localStorage.setItem("eventsPage", String(page));
     }, [page]);
 
-    const filteredData = data.filter((item) => {
+    const filteredData = useMemo(() => (data || []).filter((item) => {
         const lowerQuery = searchQuery.toLowerCase();
-        if (!item?.title) return !searchQuery; // Show all if query is empty, otherwise filter
+        if (!item?.title) return !searchQuery;
         return item.title.toLowerCase().includes(lowerQuery);
-    });
+    }), [data, searchQuery]);
 
     const totalPages = Math.ceil(filteredData.length / perPage);
     const startIndex = (page - 1) * perPage;
@@ -182,19 +199,17 @@ const Events = () => {
         window.scrollTo(0, 0);
     };
 
-    const isAdmin = isAuthenticated && userRole === 'admin';
-
     const requestEditEvent = (event) => {
-        if (isAdmin) {
+        if (canEditEvent) {
             navigate(`/edit-event/${encodeURIComponent(event.title)}/${encodeURIComponent(event.day)}`);
         } else {
-            toast.error("Permission denied. Employees cannot edit events.", { position: "top-center" });
+            toast.error("Permission denied. You cannot edit events.", { position: "top-center" });
         }
     };
 
     const requestDeleteEvent = (event) => {
-        if (!isAdmin) {
-            toast.error("Permission denied. Only Admins can delete events.", { position: "top-center" });
+        if (!canDeleteEvent) {
+            toast.error("Permission denied. You cannot delete events.", { position: "top-center" });
             return;
         }
         setEventToDelete(event);
@@ -202,7 +217,7 @@ const Events = () => {
     };
 
     const confirmDeleteEvent = async () => {
-        if (!eventToDelete || !isAuthenticated || !isAdmin) { // Extra check for isAdmin
+        if (!eventToDelete || !canDeleteEvent) {
              toast.error("Action not allowed or event not selected.", { position: "top-center" });
              setOpenDeleteDialog(false);
              setEventToDelete(null);
@@ -212,7 +227,7 @@ const Events = () => {
         try {
             const result = await deleteEventAPI(eventToDelete.title, eventToDelete.day);
             toast.success(result.message || "Event deleted successfully!", { position: "top-center" });
-            getAllEvents();
+            getAllEvents(); // Refresh list
             if (currentPageData.length === 1 && page > 1) {
                 setPage(page - 1);
             }
@@ -221,11 +236,12 @@ const Events = () => {
             toast.error(`Error deleting event: ${error.message}`, { position: "top-center" });
             if (error.message.includes("Access Denied") || error.message.includes("token not found") || error.message.includes("Authentication failed")) {
                 setIsAuthenticated(false);
-                setUserRole(null);
+                setUserInfo(null);
                 localStorage.removeItem("user");
                 localStorage.removeItem("token");
                 localStorage.removeItem("eventsData");
                 setData([]);
+                setTimeout(() => navigate("/login"), 2500);
             }
         } finally {
             setOpenDeleteDialog(false);
@@ -238,7 +254,18 @@ const Events = () => {
         setEventToDelete(null);
     };
 
-    if (!loading && !isAuthenticated) {
+    if (loading && !data.length) { // Show initial full page loader only if no data yet
+        return (
+            <Layout title="Loading Events...">
+                <ToastContainer position="top-center" autoClose={3000} />
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 150px)' }}>
+                    <CircularProgress size={50} />
+                </Box>
+            </Layout>
+        );
+    }
+
+    if (!isAuthenticated && !loading) { // If not authenticated and not in initial loading phase
         return (
             <Layout title="Events - Login Required">
                 <ToastContainer position="top-center" autoClose={3000} />
@@ -264,7 +291,7 @@ const Events = () => {
                     Events Calendar
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
-                    Explore, add, and manage upcoming events {userRole ? `(Access: ${userRole.replace('_', ' ')})` : ''}
+                    Explore, add, and manage upcoming events {userInfo?.role ? `(Access: ${userInfo.role.replace('_', ' ')})` : ''}
                 </Typography>
             </Box>
 
@@ -287,21 +314,23 @@ const Events = () => {
                         aria-label="Search events"
                     />
                 </Paper>
-                <Button
-                    variant="contained" startIcon={<Add />} onClick={() => navigate("/add-event")}
-                    aria-label="Add New Event"
-                    sx={{
-                        height: 48, borderRadius: "8px", bgcolor: "#0f172a", color: "white",
-                        px: 3, whiteSpace: "nowrap", textTransform: 'none', fontWeight: 500,
-                        "&:hover": { bgcolor: "#1e293b", transform: "translateY(-1px)" },
-                        transition: "all 0.2s ease-in-out", flexShrink: 0
-                    }}
-                >
-                    Add Event
-                </Button>
+                {canAddEvent && (
+                    <Button
+                        variant="contained" startIcon={<Add />} onClick={() => navigate("/add-event")}
+                        aria-label="Add New Event"
+                        sx={{
+                            height: 48, borderRadius: "8px", bgcolor: "#0f172a", color: "white",
+                            px: 3, whiteSpace: "nowrap", textTransform: 'none', fontWeight: 500,
+                            "&:hover": { bgcolor: "#1e293b", transform: "translateY(-1px)" },
+                            transition: "all 0.2s ease-in-out", flexShrink: 0
+                        }}
+                    >
+                        Add Event
+                    </Button>
+                )}
             </Box>
 
-            {loading && (
+            {loading && data.length === 0 && ( // Show loader if loading and no data yet (initial load)
                 <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: 300 }}>
                     <CircularProgress size={50} />
                 </Box>
@@ -309,8 +338,8 @@ const Events = () => {
 
             {!loading && error && (
                  <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
-                    {error} <Button size="small" onClick={getAllEvents} sx={{ml:1}}>Retry</Button>
-                </Alert>
+                     {error} <Button size="small" onClick={getAllEvents} sx={{ml:1}}>Retry</Button>
+                 </Alert>
             )}
 
             {!loading && !error && isAuthenticated && (
@@ -346,30 +375,34 @@ const Events = () => {
                                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                                                     <strong>Location:</strong> {event.location || 'N/A'}
                                                 </Typography>
-                                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis', 
+                                                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'
+                                                }}>
                                                     {event.description || 'No description available.'}
                                                 </Typography>
                                             </Box>
-                                            <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                            <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 {event.registration && event.registration !== "N/A" && (
-                                                     <Button variant="outlined" size="small" href={event.registration.startsWith('http') ? event.registration : `http://${event.registration}`} target="_blank" rel="noopener noreferrer" sx={{ mr: 'auto', textTransform:'none', fontSize:'0.75rem', py:0.5, px:1 }}>
-                                                        Register
-                                                    </Button>
+                                                     <Button component="a" href={event.registration.startsWith('http') ? event.registration : `http://${event.registration}`} target="_blank" rel="noopener noreferrer" variant="outlined" size="small"  sx={{ textTransform:'none', fontSize:'0.75rem', py:0.5, px:1 }}>
+                                                         Register
+                                                     </Button>
                                                 )}
-                                                {isAdmin && (
-                                                    <Box className="event-actions" sx={{ display: 'flex', gap: 0.5, opacity: {xs: 1, sm: 0}, transition: "opacity 0.2s, transform 0.2s", transform: {xs: "translateY(0)", sm:"translateY(5px)"} }}>
+                                                <Box className="event-actions" sx={{ display: 'flex', gap: 0.5, ml:'auto', opacity: {xs: 1, sm: 0}, transition: "opacity 0.2s, transform 0.2s", transform: {xs: "translateY(0)", sm:"translateY(5px)"} }}>
+                                                    {canEditEvent && (
                                                         <Tooltip title="Edit Event">
                                                             <IconButton size="small" onClick={() => requestEditEvent(event)} sx={{ '&:hover': { color: 'primary.main' }}}>
                                                                 <Edit fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
+                                                    )}
+                                                    {canDeleteEvent && (
                                                         <Tooltip title="Delete Event">
                                                             <IconButton size="small" onClick={() => requestDeleteEvent(event)} sx={{ '&:hover': { color: 'error.main' }}}>
                                                                 <Delete fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
-                                                    </Box>
-                                                )}
+                                                    )}
+                                                </Box>
                                             </Box>
                                         </Paper>
                                     </Grid>

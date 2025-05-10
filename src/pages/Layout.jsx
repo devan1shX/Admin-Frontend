@@ -10,6 +10,8 @@ import {
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import logo from "../../src/assets/iiitdlogo.png";
+import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
+
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 60;
@@ -54,6 +56,17 @@ export default function Layout({ children, title, showBackButton = true }) {
             )}
             <Divider />
             <List>
+                <ListItem button onClick={() => navigate("/admin-panel")}>
+                    <ListItemIcon sx={{ color: theme.palette.text.primary, minWidth: "40px" }}>
+                        <SupervisorAccountIcon />
+                    </ListItemIcon>
+                    {(isMobile || !collapsed) && (
+                        <ListItemText
+                            primary="Admins"
+                            primaryTypographyProps={{ sx: { color: "black", cursor: "pointer" } }}
+                        />
+                    )}
+                </ListItem>
                 <ListItem button onClick={() => navigate("/admin-dashboard")}>
                     <ListItemIcon sx={{ color: theme.palette.text.primary, minWidth: "40px" }}>
                         <Dashboard />

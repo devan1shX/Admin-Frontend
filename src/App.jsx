@@ -11,6 +11,8 @@ import AddEvents from "./pages/AddEvents";
 import EditLinks from "./pages/EditLinks";
 import Login from "./pages/Login/Login";
 import ShowDetails from "./pages/ShowDetails";
+import SignUp from "./pages/SignUp/Signup" ;
+import Admin_Panel from "./pages/Admin_Panel";
 
 function App() {
   const ProtectedRoute = ({ children }) => {
@@ -22,6 +24,15 @@ function App() {
     <>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/signUp" element={<SignUp />} />
+        <Route
+          path="/admin-panel"
+          element={
+            <ProtectedRoute>
+              <Admin_Panel />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/add-technology"
           element={
@@ -86,7 +97,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-        {/* Fallback route */}
         <Route path="*" element={<Navigate to="/admin-dashboard" />} />
       </Routes>
     </>
