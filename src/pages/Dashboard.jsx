@@ -314,10 +314,10 @@ const Dashboard = () => {
             const errData = await response.json().catch(() => ({}));
             errorMsg = errData.message || errorMsg;
             if (response.status === 401) {
-                 toast.error("Authentication failed. Please log in again.", { position: "top-center" });
-                 await firebaseSignOut(auth).catch(console.error);
-                 localStorage.clear();
-                 setIsAuthenticated(false); setUserInfo(null); navigate("/login");
+                toast.error("Authentication failed. Please log in again.", { position: "top-center" });
+                await firebaseSignOut(auth).catch(console.error);
+                localStorage.clear();
+                setIsAuthenticated(false); setUserInfo(null); navigate("/login");
             }
             throw new Error(errorMsg);
         }
@@ -475,7 +475,7 @@ const Dashboard = () => {
                                             <TextField placeholder="Search technologies..." variant="standard" fullWidth value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} InputProps={{ disableUnderline: true, sx: { ml: 1 }, endAdornment: (<InputAdornment position="end"><IconButton onClick={() => setShowFilters((prev) => !prev)}><FilterList color="action" /></IconButton></InputAdornment>), }} />
                                         </Paper>
                                     </Grid>
-                                    { (canAddTech) && /* Updated condition here */
+                                    { (canAddTech) && 
                                         <Grid item xs={12} sm={"auto"}>
                                             <Button variant="contained" startIcon={<Add />} onClick={() => navigate("/add-technology")} fullWidth={isMobile} sx={{ height: consistentHeight, borderRadius: 2, background: "linear-gradient(90deg, #141E30, #243B55)", boxShadow: "0 4px 8px rgba(0,0,0,0.1)", transition: "all 0.3s", "&:hover": { boxShadow: "0 6px 12px rgba(0,0,0,0.2)", transform: "translateY(-2px)" } }}>Add Technology</Button>
                                         </Grid>

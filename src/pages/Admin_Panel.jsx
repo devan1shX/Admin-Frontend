@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Layout from "./Layout"
-import { auth, onAuthStateChanged, API_BASE_URL } from "../firebase"
+import { auth, onAuthStateChanged } from "../firebase"
 import {
   Box,
   Typography,
@@ -35,6 +35,8 @@ import {
 } from "@mui/material"
 import { Delete as DeleteIcon, Info as InfoIcon, Save as SaveIcon } from "@mui/icons-material"
 import { ThemeProvider, createTheme } from "@mui/material/styles"
+
+export const API_BASE_URL = "http://192.168.1.148:5001";
 
 // Define available assignable roles for the dropdown
 const ASSIGNABLE_ROLES = ["admin", "employee"]

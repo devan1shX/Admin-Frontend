@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react"; // Added useEffect
 import {
     CssBaseline, Box, IconButton, Drawer, List, ListItem,
     ListItemIcon, ListItemText, Divider, useTheme, useMediaQuery,
@@ -12,9 +12,27 @@ import { useNavigate } from "react-router-dom";
 import logo from "../../src/assets/iiitdlogo.png";
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 
-
 const drawerWidth = 260;
 const collapsedDrawerWidth = 60;
+
+// Helper function to get user info from localStorage (similar to AddEvents)
+const getUserInfoFromStorage = () => {
+    if (typeof window !== 'undefined') { // Ensure localStorage is available
+        const userString = localStorage.getItem("user");
+        if (userString) {
+            try {
+                return JSON.parse(userString);
+            } catch (e) {
+                console.error("Failed to parse user info from localStorage in Layout", e);
+                // Optionally clear corrupted data
+                // localStorage.removeItem("user");
+                // localStorage.removeItem("token");
+                return null;
+            }
+        }
+    }
+    return null;
+};
 
 export default function Layout({ children, title, showBackButton = true }) {
     const navigate = useNavigate();
@@ -23,6 +41,15 @@ export default function Layout({ children, title, showBackButton = true }) {
 
     const [mobileOpen, setMobileOpen] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
+    const [currentUserRole, setCurrentUserRole] = useState(null); // State for user role
+
+    useEffect(() => {
+        // Load user info when the component mounts
+        const userInfo = getUserInfoFromStorage();
+        if (userInfo && userInfo.role) {
+            setCurrentUserRole(userInfo.role);
+        }
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
@@ -56,17 +83,20 @@ export default function Layout({ children, title, showBackButton = true }) {
             )}
             <Divider />
             <List>
-                <ListItem button onClick={() => navigate("/admin-panel")}>
-                    <ListItemIcon sx={{ color: theme.palette.text.primary, minWidth: "40px" }}>
-                        <SupervisorAccountIcon />
-                    </ListItemIcon>
-                    {(isMobile || !collapsed) && (
-                        <ListItemText
-                            primary="Admins"
-                            primaryTypographyProps={{ sx: { color: "black", cursor: "pointer" } }}
-                        />
-                    )}
-                </ListItem>
+                {/* Conditionally render Admins button */}
+                {currentUserRole === "superAdmin" && (
+                    <ListItem button onClick={() => navigate("/admin-panel")}>
+                        <ListItemIcon sx={{ color: theme.palette.text.primary, minWidth: "40px" }}>
+                            <SupervisorAccountIcon />
+                        </ListItemIcon>
+                        {(isMobile || !collapsed) && (
+                            <ListItemText
+                                primary="Admins"
+                                primaryTypographyProps={{ sx: { color: "black", cursor: "pointer" } }}
+                            />
+                        )}
+                    </ListItem>
+                )}
                 <ListItem button onClick={() => navigate("/admin-dashboard")}>
                     <ListItemIcon sx={{ color: theme.palette.text.primary, minWidth: "40px" }}>
                         <Dashboard />
@@ -159,7 +189,7 @@ export default function Layout({ children, title, showBackButton = true }) {
                             boxSizing: "border-box",
                             width: currentDrawerWidth,
                             background: "white",
-                            color: "#fff",
+                            color: "#fff", // Note: Your ListItemText overrides this to black
                             ...(isMobile && mobileOpen && { zIndex: theme.zIndex.drawer + 2 }),
                             transition: "width 0.3s",
                         },

@@ -12,7 +12,7 @@ import { Search, Add, Edit, Delete, Login as LoginIcon } from "@mui/icons-materi
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
-import { auth, signOut as firebaseSignOut } from "../firebase"; // Assuming firebase.js is in src/
+import { auth, signOut as firebaseSignOut } from "../firebase"; 
 
 const API_BASE_URL = "http://192.168.1.148:5001";
 
