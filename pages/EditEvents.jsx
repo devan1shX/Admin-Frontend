@@ -10,7 +10,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
-// import { auth } from "../firebase"; // auth is not directly used here
 
 const API_BASE_URL = "http://192.168.1.148:5001";
 

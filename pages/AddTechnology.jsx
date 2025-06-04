@@ -5,7 +5,11 @@ import {
     TextField, Button, Paper, Grid, Typography, useTheme,
     useMediaQuery, IconButton, Box, Card, CardMedia, Divider,
     Switch, FormControlLabel,
-    CircularProgress, Alert
+    CircularProgress, Alert,
+    MenuItem, // Added
+    FormControl, // Added
+    InputLabel, // Added
+    Select // Added
 } from "@mui/material";
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -18,7 +22,9 @@ import "react-toastify/dist/ReactToastify.css";
 
 const API_BASE_URL = "http://192.168.1.148:5001";
 const MAX_IMAGES = 5;
-const MAX_BROCHURES = 5; // Define a limit for brochures
+const MAX_BROCHURES = 5;
+
+const PATENT_STATUSES = ["Not Filed", "Application Filed", "Under Examination", "Granted", "Abandoned/Lapsed"];
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");
@@ -50,13 +56,15 @@ const addTechnologyAPI = async (newData) => {
 
     const formData = new FormData();
     Object.entries(newData).forEach(([key, value]) => {
-        if (key === 'imagesData' || key === 'brochureFilesData') return; 
+        if (key === 'imagesData' || key === 'brochureFilesData') return;
         if (Array.isArray(value)) {
             formData.append(key, JSON.stringify(value));
         } else if (key === 'spotlight') {
             formData.append(key, String(value));
-        } else if (value !== null && value !== undefined) {
+        } else if (value !== null && value !== undefined && value !== "") { // Ensure empty strings are not appended unless intended
             formData.append(key, value);
+        } else if (key === 'patent' && value === "Not Filed") { // Ensure "Not Filed" is sent
+             formData.append(key, value);
         }
     });
 
@@ -70,7 +78,7 @@ const addTechnologyAPI = async (newData) => {
             }
         });
     }
-    
+
     if (newData.brochureFilesData && newData.brochureFilesData.length > 0) {
         newData.brochureFilesData.forEach((brochureObj) => {
             if (brochureObj.file) {
@@ -109,9 +117,17 @@ const AddTechnology = () => {
         name: "", description: "", overview: "", detailedDescription: "", genre: "",
         innovators: [{ name: "", mail: "" }], advantages: [""], applications: [""], useCases: [""],
         relatedLinks: [{ title: "", url: "" }], technicalSpecifications: "", trl: "",
-        imagesData: [], 
-        patent: "", spotlight: false,
-        brochureFilesData: [], // Changed from brochureFile: null
+        imagesData: [],
+        spotlight: false,
+        brochureFilesData: [],
+        // --- Updated Patent Fields ---
+        patentStatus: "Not Filed", // Default patent status
+        patentId: "",
+        patentApplicationNumber: "",
+        patentFilingDate: "",
+        patentGrantDate: "",
+        patentDocumentUrl: "",
+        // ------------------------
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -147,8 +163,30 @@ const AddTechnology = () => {
         setAddData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleSwitchChange = (e) => {
+    const handleSpotlightSwitchChange = (e) => {
         setAddData((prev) => ({ ...prev, [e.target.name]: e.target.checked }));
+    };
+
+    const handlePatentStatusChange = (e) => {
+        const newStatus = e.target.value;
+        setAddData((prev) => {
+            const newState = { ...prev, patentStatus: newStatus };
+
+            // Clear fields based on the new status
+            if (newStatus === "Not Filed") {
+                newState.patentId = "";
+                newState.patentApplicationNumber = "";
+                newState.patentFilingDate = "";
+                newState.patentGrantDate = "";
+                newState.patentDocumentUrl = "";
+            } else if (newStatus === "Application Filed" || newStatus === "Under Examination") {
+                newState.patentId = ""; // Not applicable yet
+                newState.patentGrantDate = ""; // Not applicable yet
+            }
+            // For "Granted" and "Abandoned/Lapsed", all fields can be potentially filled.
+            // User will input them as needed.
+            return newState;
+        });
     };
 
     const handleAddInnovator = () => setAddData(prev => ({ ...prev, innovators: [...prev.innovators, { name: "", mail: "" }] }));
@@ -176,12 +214,12 @@ const AddTechnology = () => {
     const handleRelatedLinkChange = (index, field, value) => {
         setAddData(prev => ({ ...prev, relatedLinks: (prev.relatedLinks || []).map((item, i) => i === index ? { ...item, [field]: value } : item) }));
     };
-    
+
     const handleImageUpload = (e) => {
         const files = Array.from(e.target.files);
         const currentImageCount = addData.imagesData.length;
         const remainingSlots = MAX_IMAGES - currentImageCount;
-        
+
         if (files.length > remainingSlots) {
             toast.warn(`You can only add ${remainingSlots > 0 ? remainingSlots : 0} more image(s). Max ${MAX_IMAGES} images allowed.`);
         }
@@ -225,20 +263,20 @@ const AddTechnology = () => {
             const commonDocExtensions = ['pdf', 'doc', 'docx', 'txt', 'odt'];
 
             if ((!allowedTypes.includes(file.type) && !commonDocExtensions.includes(fileExtension))) {
-                 toast.error(`File "${file.name}" has an invalid type. Allowed: PDF, DOC, DOCX, TXT, ODT.`);
-                 return null; 
+                toast.error(`File "${file.name}" has an invalid type. Allowed: PDF, DOC, DOCX, TXT, ODT.`);
+                return null;
             }
             if (file.size > 10 * 1024 * 1024) { // 10MB limit
                 toast.error(`File "${file.name}" size exceeds 10MB limit.`);
                 return null;
             }
             return { file: file, name: file.name };
-        }).filter(Boolean); // Remove nulls from failed validations
+        }).filter(Boolean);
 
         if (newBrochureObjects.length > 0) {
             setAddData(prev => ({ ...prev, brochureFilesData: [...prev.brochureFilesData, ...newBrochureObjects] }));
         }
-        
+
         if (brochureFileInputRef.current) {
             brochureFileInputRef.current.value = "";
         }
@@ -264,8 +302,26 @@ const AddTechnology = () => {
             if (typeof processedData[key] === 'string') processedData[key] = processedData[key].trim();
         });
 
-        if (!processedData.name || !processedData.genre || !String(processedData.trl).trim()) {
-            toast.error("Please fill in all required fields: Name, Genre, and TRL Level.");
+        // Patent field is now addData.patentStatus, which is directly used.
+        // It's named 'patent' in the schema.
+        processedData.patent = processedData.patentStatus;
+        delete processedData.patentStatus; // remove the temporary state key
+
+        // Clean up patent fields based on the final patent status
+        if (processedData.patent === "Not Filed") {
+            processedData.patentId = "";
+            processedData.patentApplicationNumber = "";
+            processedData.patentFilingDate = "";
+            processedData.patentGrantDate = "";
+            processedData.patentDocumentUrl = "";
+        } else if (processedData.patent === "Application Filed" || processedData.patent === "Under Examination") {
+            processedData.patentId = "";
+            processedData.patentGrantDate = "";
+        }
+        // For "Granted" and "Abandoned/Lapsed", all fields are potentially valid and should be sent if filled.
+
+        if (!processedData.name || !processedData.genre || !String(processedData.trl).trim() || !processedData.patent) {
+            toast.error("Please fill in all required fields: Name, Genre, TRL Level, and Patent Status.");
             setIsSubmitting(false);
             return;
         }
@@ -282,7 +338,7 @@ const AddTechnology = () => {
         processedData.applications = (processedData.applications || []).map(app => app.trim()).filter(Boolean);
         processedData.useCases = (processedData.useCases || []).map(uc => uc.trim()).filter(Boolean);
         processedData.relatedLinks = (processedData.relatedLinks || []).filter(link => link.title.trim() && link.url.trim());
-        
+
         try {
             await addTechnologyAPI(processedData);
             toast.success("Technology added successfully!");
@@ -292,7 +348,7 @@ const AddTechnology = () => {
             toast.error(`Error adding technology: ${error.message}`);
             if (error.message.includes("Access Denied") || error.message.includes("token not found")) {
                 setTimeout(() => navigate('/login'), 2100);
-           }
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -305,7 +361,7 @@ const AddTechnology = () => {
     if (!isPageAccessible) {
         return ( <Layout title="Access Denied"><ToastContainer position="top-center" autoClose={3000} /><Paper elevation={3} sx={{ p: 4, borderRadius: 2, textAlign: 'center', margin: "20px auto", maxWidth: '600px' }}><Alert severity="error" sx={{ mb: 3 }}>{pageError || "You do not have permission to access this page."}</Alert><Button variant="outlined" onClick={() => navigate(pageError && (pageError.includes("login") || pageError.includes("Authentication")) ? '/login' : '/admin-dashboard')} sx={{ mr: 1 }}>{pageError && (pageError.includes("login") || pageError.includes("Authentication")) ? 'Go to Login' : 'Back to Dashboard'}</Button></Paper></Layout> );
     }
-
+    
     return (
         <Layout title="Add New Technology">
             <ToastContainer position="top-center" autoClose={3000} />
@@ -328,14 +384,109 @@ const AddTechnology = () => {
                                     <Grid item xs={12} sm={6}><TextField label="TRL Level *" name="trl" type="number" fullWidth value={addData.trl} onChange={handleGenericChange} required helperText="Technology Readiness Level (1-9)" disabled={isSubmitting} inputProps={{ min: 1, max: 9 }} /></Grid>
                                     <Grid item xs={12} sm={6}><TextField label="Genre *" name="genre" fullWidth value={addData.genre} onChange={handleGenericChange} required disabled={isSubmitting} /></Grid>
                                     <Grid item xs={12}><TextField label="Brief Description" name="description" fullWidth multiline rows={3} value={addData.description} onChange={handleGenericChange} disabled={isSubmitting} /></Grid>
-                                    <Grid item xs={12} sm={6}><TextField label="Patent Status/Number" name="patent" fullWidth value={addData.patent} onChange={handleGenericChange} disabled={isSubmitting} /></Grid>
-                                    <Grid item xs={12} sm={6} sx={{display:'flex', alignItems:'center'}}><FormControlLabel control={<Switch checked={addData.spotlight} onChange={handleSwitchChange} name="spotlight" disabled={isSubmitting} />} label="Spotlight Technology?" /></Grid>
+                                    
+                                    {/* --- Modified Patent Section --- */}
+                                    <Grid item xs={12}>
+                                        <FormControl fullWidth variant="outlined" disabled={isSubmitting} required>
+                                            <InputLabel id="patent-status-label">Patent Status *</InputLabel>
+                                            <Select
+                                                labelId="patent-status-label"
+                                                id="patentStatus"
+                                                name="patentStatus" // Keep name for potential generic handlers, though specific one is used
+                                                value={addData.patentStatus}
+                                                onChange={handlePatentStatusChange}
+                                                label="Patent Status *"
+                                            >
+                                                {PATENT_STATUSES.map((status) => (
+                                                    <MenuItem key={status} value={status}>
+                                                        {status}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+
+                                    {addData.patentStatus !== "Not Filed" && (
+                                        <>
+                                            {/* Common fields for all statuses except "Not Filed" */}
+                                            <Grid item xs={12} sm={6}>
+                                                <TextField
+                                                    label="Patent Application Number"
+                                                    name="patentApplicationNumber"
+                                                    fullWidth
+                                                    value={addData.patentApplicationNumber}
+                                                    onChange={handleGenericChange}
+                                                    disabled={isSubmitting}
+                                                />
+                                            </Grid>
+                                            <Grid item xs={12} sm={6}>
+                                                <TextField
+                                                    label="Patent Filing Date"
+                                                    name="patentFilingDate"
+                                                    type="date"
+                                                    fullWidth
+                                                    value={addData.patentFilingDate}
+                                                    onChange={handleGenericChange}
+                                                    InputLabelProps={{ shrink: true }}
+                                                    disabled={isSubmitting}
+                                                />
+                                            </Grid>
+
+                                            {/* Fields specific to "Granted" or "Abandoned/Lapsed" */}
+                                            {(addData.patentStatus === "Granted" || addData.patentStatus === "Abandoned/Lapsed") && (
+                                                <>
+                                                    <Grid item xs={12} sm={6}>
+                                                        <TextField
+                                                            label="Patent ID"
+                                                            name="patentId"
+                                                            fullWidth
+                                                            value={addData.patentId}
+                                                            onChange={handleGenericChange}
+                                                            disabled={isSubmitting}
+                                                            helperText={addData.patentStatus === "Granted" ? "Required if granted" : "If known"}
+                                                        />
+                                                    </Grid>
+                                                    <Grid item xs={12} sm={6}>
+                                                        <TextField
+                                                            label="Patent Grant Date"
+                                                            name="patentGrantDate"
+                                                            type="date"
+                                                            fullWidth
+                                                            value={addData.patentGrantDate}
+                                                            onChange={handleGenericChange}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            disabled={isSubmitting}
+                                                            helperText={addData.patentStatus === "Granted" ? "Required if granted" : "If known"}
+                                                        />
+                                                    </Grid>
+                                                </>
+                                            )}
+                                            
+                                            <Grid item xs={12}>
+                                                <TextField
+                                                    label="Patent Document URL (Optional)"
+                                                    name="patentDocumentUrl"
+                                                    type="url"
+                                                    fullWidth
+                                                    value={addData.patentDocumentUrl}
+                                                    onChange={handleGenericChange}
+                                                    disabled={isSubmitting}
+                                                />
+                                            </Grid>
+                                        </>
+                                    )}
+                                    {/* ------------------------------ */}
+                                    
+                                    <Grid item xs={12} sm={addData.patentStatus !== "Not Filed" ? 12 : 6} sx={{ display: 'flex', alignItems: 'center', mt: addData.patentStatus !== "Not Filed" ? 2 : 0 }}>
+                                        <FormControlLabel control={<Switch checked={addData.spotlight} onChange={handleSpotlightSwitchChange} name="spotlight" disabled={isSubmitting} />} label="Spotlight Technology?" />
+                                    </Grid>
                                 </Grid>
                             </Box>
                         </Grid>
 
                         <Grid item xs={12}><Divider light sx={{ my: 1 }} /></Grid>
                         
+                        {/* Brochure Section */}
                         <Grid item xs={12}>
                             <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}>
                                 <Typography variant="h6" gutterBottom sx={{mb:1.5, fontWeight:500}}>Brochures (Max {MAX_BROCHURES}, Optional)</Typography>
@@ -379,6 +530,7 @@ const AddTechnology = () => {
 
                         <Grid item xs={12}><Divider light sx={{ my: 1 }} /></Grid>
 
+                        {/* Innovators Section */}
                         <Grid item xs={12}>
                                 <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}>
                                 <Typography variant="h6" gutterBottom sx={{ mb: 2.5, fontWeight: 500 }}>Innovators</Typography>
@@ -397,6 +549,7 @@ const AddTechnology = () => {
                         
                         <Grid item xs={12}><Divider light sx={{ my: 1 }} /></Grid>
 
+                        {/* Technology Details Section */}
                         <Grid item xs={12}>
                             <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}>
                                 <Typography variant="h6" gutterBottom sx={{ mb: 2.5, fontWeight: 500 }}>Technology Details</Typography>
@@ -408,6 +561,7 @@ const AddTechnology = () => {
                             </Box>
                         </Grid>
                         
+                        {/* Advantages, Applications, Use Cases Sections */}
                         {['advantages', 'applications', 'useCases'].map(fieldName => (
                             <Grid item xs={12} key={fieldName}>
                                 <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}>
@@ -425,6 +579,7 @@ const AddTechnology = () => {
                             </Grid>
                         ))}
 
+                        {/* Related Links Section */}
                         <Grid item xs={12}>
                             <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}>
                                 <Typography variant="h6" gutterBottom sx={{ mb: 2.5, fontWeight: 500 }}>Related Links (Optional)</Typography>
@@ -443,6 +598,7 @@ const AddTechnology = () => {
 
                         <Grid item xs={12}><Divider light sx={{ my: 1 }} /></Grid>
 
+                        {/* Images Section */}
                         <Grid item xs={12}>
                             <Box sx={{ border: `1px solid ${theme.palette.divider}`, p: 2.5, borderRadius: 2 }}>
                                 <Typography variant="h6" gutterBottom sx={{mb:1.5, fontWeight:500}}>Images (Max {MAX_IMAGES}, Optional)</Typography>
