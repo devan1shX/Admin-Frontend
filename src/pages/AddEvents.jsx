@@ -13,7 +13,7 @@ import Layout from "./Layout";
 // Assuming firebase.js is in src/ and this file is in src/pages/
 // import { auth } from "../firebase"; // auth is not directly used here
 
-const API_BASE_URL = "http://192.168.1.148:5001";
+const API_BASE_URL = "https://api.otmt.iiitd.edu.in/api";
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");
