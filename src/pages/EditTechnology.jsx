@@ -18,7 +18,7 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
 
-const API_BASE_URL = "http://192.168.1.148:5001";
+const API_BASE_URL = "/api";
 const MAX_IMAGES = 5;
 const MAX_BROCHURES = 5;
 
