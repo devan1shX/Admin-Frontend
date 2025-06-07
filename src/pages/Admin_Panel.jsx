@@ -149,7 +149,7 @@ const Admin_Panel = () => {
     // setError("") 
     // setSuccessMessage("")
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/all-users`, {
+      const response = await fetch(`${API_BASE_URL}/admin/all-users`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       })
