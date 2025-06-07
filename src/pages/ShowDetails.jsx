@@ -79,7 +79,7 @@ const theme = createTheme({
     },
 });
 
-const API_BASE_URL = "https://api.otmt.iiitd.edu.in/data";
+const API_BASE_URL = "https://api.otmt.iiitd.edu.in/api";
 const PATENT_STATUSES = ["Not Filed", "Application Filed", "Under Examination", "Granted", "Abandoned/Lapsed"];
 
 
