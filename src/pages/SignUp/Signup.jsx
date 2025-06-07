@@ -33,7 +33,7 @@ import {
     signOut as firebaseSignOut
 } from "../../firebase"; // Ensure this path is correct (e.g., src/firebase.js)
 
-const API_BASE_URL = "http://192.168.1.148:5001";
+const API_BASE_URL = "/api";
 
 const Signup = () => {
     const [signUpInfo, setSignUpInfo] = useState({ name: "", email: "", password: "" });
