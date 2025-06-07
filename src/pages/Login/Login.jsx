@@ -34,7 +34,7 @@ import {
     onAuthStateChanged
 } from "../../firebase"; // Assuming firebase.js is in src/
 
-const API_BASE_URL = "/admin-api"; // Your backend URL
+const API_BASE_URL = "/api"; // Your backend URL
 
 const Login = () => {
     const [loginInfo, setLoginInfo] = useState({ email: "", password: "" });
