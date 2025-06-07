@@ -36,7 +36,7 @@ import {
 import { Delete as DeleteIcon, Info as InfoIcon, Save as SaveIcon } from "@mui/icons-material"
 import { ThemeProvider, createTheme } from "@mui/material/styles"
 
-export const API_BASE_URL = "http://192.168.1.148:5001";
+export const API_BASE_URL = "/api";
 
 // Define available assignable roles for the dropdown
 const ASSIGNABLE_ROLES = ["admin", "employee"]
