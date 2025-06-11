@@ -48,7 +48,7 @@ import {
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-const API_BASE_URL = "https://api.otmt.iiitd.edu.in/api";
+const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");
