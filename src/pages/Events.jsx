@@ -14,7 +14,7 @@ import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
 import { auth, signOut as firebaseSignOut } from "../firebase"; 
 
-const API_BASE_URL = "https://api.otmt.iiitd.edu.in/api";
+const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");
