@@ -28,7 +28,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  FormControlLabel,
+   FormControlLabel,
   Tooltip,
   IconButton,
   useMediaQuery,
@@ -37,10 +37,12 @@ import {
 import { Delete as DeleteIcon, Info as InfoIcon, Save as SaveIcon } from "@mui/icons-material"
 import { ThemeProvider, createTheme } from "@mui/material/styles"
 
-export const API_BASE_URL = "https://otmt.iiitd.edu.in/api"
-// const API_BASE_URL = "http://localhost:5001/api";
+export const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
 
+// Define available assignable roles for the dropdown
 const ASSIGNABLE_ROLES = ["admin", "employee"]
+
+// Define the order and labels for permission checkboxes
 const PERMISSION_DEFINITIONS = [
   { key: "addTech", label: "Add Tech", shortLabel: "Add Tech" },
   { key: "editTech", label: "Edit Tech", shortLabel: "Edit Tech" },
@@ -50,6 +52,7 @@ const PERMISSION_DEFINITIONS = [
   { key: "deleteEvent", label: "Delete Event", shortLabel: "Delete Event" },
 ]
 
+// Create a custom theme with the teal color (#328d89)
 const theme = createTheme({
   palette: {
     primary: {
@@ -72,16 +75,22 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h1: { fontWeight: 600 },
-    h2: { fontWeight: 600 },
-    h3: { fontWeight: 600 },
+    h1: {
+      fontWeight: 600,
+    },
+    h2: {
+      fontWeight: 600,
+    },
+    h3: {
+      fontWeight: 600,
+    },
   },
   components: {
     MuiTableCell: {
       styleOverrides: {
         head: {
           fontWeight: 600,
-          backgroundColor: "#edf2f7",
+          backgroundColor: "#edf2f7", // A light gray for header background
         },
       },
     },
@@ -97,36 +106,49 @@ const theme = createTheme({
 
 const Admin_Panel = () => {
   const [currentUser, setCurrentUser] = useState(null)
+  // eslint-disable-next-line no-unused-vars
   const [originalUsers, setOriginalUsers] = useState([])
   const [editableUsers, setEditableUsers] = useState([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+  const [isSaving, setIsSaving] = useState(false) // Used for both save and delete operations
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
   const [changedUserUids, setChangedUserUids] = useState(new Set())
-  const [userToDelete, setUserToDelete] = useState(null)
+  const [userToDelete, setUserToDelete] = useState(null) 
   const [snackbarOpen, setSnackbarOpen] = useState(false)
 
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"))
 
+  // Effect for snackbar visibility based on messages
   useEffect(() => {
     if (successMessage || error) {
       setSnackbarOpen(true)
     }
   }, [successMessage, error])
 
+  // Auto-hide for snackbar messages
   useEffect(() => {
     let timer
     if (snackbarOpen) {
-      timer = setTimeout(() => {
-        setSnackbarOpen(false)
-      }, error ? 7000 : 4000)
+        timer = setTimeout(() => {
+            setSnackbarOpen(false)
+            // Optionally clear messages after snackbar hides if not cleared elsewhere
+            // setTimeout(() => { 
+            //     if(successMessage) setSuccessMessage('');
+            //     if(error) setError('');
+            // }, 500); // Delay clearing to allow fade-out
+        }, error ? 7000 : 4000); // Longer for errors
     }
     return () => clearTimeout(timer)
   }, [snackbarOpen, successMessage, error])
 
+
+  // Fetch initial user data
   const fetchAllUsersWithPermissions = useCallback(async (token) => {
     setIsLoading(true)
+    // Don't clear error/success immediately if it's from a previous action like save/delete
+    // setError("") 
+    // setSuccessMessage("")
     try {
       const response = await fetch(`${API_BASE_URL}/admin/all-users`, {
         method: "GET",
@@ -136,27 +158,9 @@ const Admin_Panel = () => {
       if (!response.ok || !data.success) {
         throw new Error(data.message || `Server error: ${response.status}`)
       }
-
-      // --- FIX START ---
-      // Process users to ensure frontend UI correctly reflects employee permissions on load.
-      const processedUsers = (data.users || []).map(user => {
-        const newUser = { ...user };
-        // If the user is an employee, ensure their default permissions are correctly set for display.
-        if (newUser.role === 'employee') {
-          newUser.addTech = newUser.addTech === true;
-          newUser.editTech = newUser.editTech === true; // This ensures the checkbox is ticked
-          newUser.deleteTech = newUser.deleteTech === true;
-          newUser.addEvent = newUser.addEvent === true;
-          newUser.editEvent = newUser.editEvent === true;
-          newUser.deleteEvent = newUser.deleteEvent === true;
-        }
-        return newUser;
-      });
-      // --- FIX END ---
-      
-      setOriginalUsers(JSON.parse(JSON.stringify(processedUsers)))
-      setEditableUsers(processedUsers)
-      setChangedUserUids(new Set())
+      setOriginalUsers(JSON.parse(JSON.stringify(data.users || [])))
+      setEditableUsers(data.users || [])
+      setChangedUserUids(new Set()) // Reset changed users after a successful fetch
     } catch (err) {
       console.error("Error fetching all users:", err)
       setError(`Failed to load users: ${err.message}.`)
@@ -167,6 +171,7 @@ const Admin_Panel = () => {
     }
   }, [])
 
+  // Effect for handling Firebase Authentication state
   useEffect(() => {
     setIsLoading(true)
     const unsubscribe = onAuthStateChanged(
@@ -201,22 +206,22 @@ const Admin_Panel = () => {
         setOriginalUsers([])
         setEditableUsers([])
         setIsLoading(false)
-      }
+      },
     )
     return () => unsubscribe()
   }, [fetchAllUsersWithPermissions])
 
+  // Handler for changing a permission checkbox
   const handlePermissionChange = (userUid, permissionKey, isChecked) => {
     setEditableUsers((prevUsers) =>
-      prevUsers.map((user) => (user.uid === userUid ? { ...user, [permissionKey]: isChecked } : user))
+      prevUsers.map((user) => (user.uid === userUid ? { ...user, [permissionKey]: isChecked } : user)),
     )
     setChangedUserUids((prev) => new Set(prev).add(userUid))
-    setSuccessMessage("")
-    setError('');
+    setSuccessMessage("") // Clear previous success on new edit
+    setError(''); // Clear previous error on new edit
   }
 
-  // --- FIX START ---
-  // This function now correctly sets the default permissions when a role is changed to 'employee'.
+  // Handler for changing a user's role
   const handleRoleChange = (userUid, newRole) => {
     setEditableUsers((prevUsers) =>
       prevUsers.map((user) => {
@@ -227,25 +232,21 @@ const Admin_Panel = () => {
               updatedUser[pDef.key] = true
             })
           } else if (newRole === "employee") {
-            // Set the default permissions for an employee
-            updatedUser.addTech = true;
-            updatedUser.editTech = true; // This is the key change
-            updatedUser.deleteTech = false;
-            updatedUser.addEvent = true;
-            updatedUser.editEvent = false;
-            updatedUser.deleteEvent = false;
+            PERMISSION_DEFINITIONS.forEach((pDef) => {
+              updatedUser[pDef.key] = (pDef.key === "addTech" || pDef.key === "addEvent")
+            })
           }
           return updatedUser
         }
         return user
-      })
+      }),
     )
     setChangedUserUids((prev) => new Set(prev).add(userUid))
     setSuccessMessage("")
     setError('');
   }
-  // --- FIX END ---
 
+  // Handler for "Save Changes" button
   const handleSaveChanges = async () => {
     if (!currentUser) {
       setError("Authentication token not available. Please re-login.")
@@ -267,18 +268,19 @@ const Admin_Panel = () => {
 
     const updatePromises = Array.from(changedUserUids).map(async (uid) => {
       const userToUpdate = editableUsers.find((u) => u.uid === uid)
-      const originalUser = originalUsers.find((u) => u.uid === uid);
+      const originalUser = originalUsers.find((u) => u.uid === uid); // For checking if superAdmin role was changed
       if (!userToUpdate) return
 
       if (
         userToUpdate.uid === currentUser.uid &&
-        originalUser?.role === "superAdmin" &&
+        originalUser?.role === "superAdmin" && // Check original role
         userToUpdate.role !== "superAdmin"
       ) {
         cumulativeErrorMessages += `Super admin cannot change their own role. `
         failedUpdates++
+        // Revert role change locally for the current superAdmin
         setEditableUsers(prev => prev.map(u => u.uid === uid ? {...u, role: 'superAdmin'} : u));
-        return
+        return 
       }
 
       const payload = {
@@ -317,53 +319,61 @@ const Admin_Panel = () => {
       setSuccessMessage(`${successfulUpdates} user(s) updated successfully.`)
       fetchAllUsersWithPermissions(idToken)
     } else if (successfulUpdates > 0 && failedUpdates > 0) {
-      setError(cumulativeErrorMessages.trim() + ` ${successfulUpdates} updated, ${failedUpdates} failed.`);
-      fetchAllUsersWithPermissions(idToken);
+        setError(cumulativeErrorMessages.trim() + ` ${successfulUpdates} updated, ${failedUpdates} failed.`);
+        fetchAllUsersWithPermissions(idToken); // Still refresh to show successful ones
     } else if (failedUpdates > 0) {
       setError(cumulativeErrorMessages.trim() + ` All ${failedUpdates} update(s) failed.`)
-    } else if (changedUserUids.size > 0) {
-      setError("Attempted to save but no updates were processed. This might indicate an issue with identifying changes or a self-update restriction.");
+    } else if (changedUserUids.size > 0) { // No successful, no failed, but changes were attempted
+        setError("Attempted to save but no updates were processed. This might indicate an issue with identifying changes or a self-update restriction.");
     }
   }
-  
+
+  // Handler for initiating user deletion
   const handleDeleteUserClick = (user) => {
     if (user.uid === currentUser?.uid) {
       setError("You cannot delete your own account from this panel.")
       return
     }
+    if (user.role === "superAdmin") {
+      setError("Super admin accounts cannot be deleted from this panel for security reasons.")
+      return
+    }
     setUserToDelete(user)
   }
 
+  // Handler for confirming and executing user deletion
   const confirmDeleteUser = async () => {
     if (!userToDelete || !currentUser) return
 
     setError("")
     setSuccessMessage("")
-    setIsSaving(true)
+    setIsSaving(true) 
 
     try {
       const idToken = await currentUser.getIdToken(true)
-      const response = await fetch(`${API_BASE_URL}/admin/users/${userToDelete.uid}`, {
+      // --- ACTUAL API CALL FOR DELETION ---
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userToDelete.uid}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${idToken}` },
       });
-
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.message || `Failed to delete user ${userToDelete.email}`);
       }
+      // --- END ACTUAL API CALL ---
       
       setSuccessMessage(`User ${userToDelete.email} has been deleted successfully.`)
-      fetchAllUsersWithPermissions(idToken)
+      fetchAllUsersWithPermissions(idToken) // Refresh user list
     } catch (err) {
       console.error("Error deleting user:", err)
       setError(`Failed to delete user ${userToDelete.email}: ${err.message}`)
     } finally {
-      setUserToDelete(null)
+      setUserToDelete(null) 
       setIsSaving(false)
     }
   }
 
+  // Loading state
   if (isLoading && editableUsers.length === 0) {
     return (
       <Layout>
@@ -374,7 +384,7 @@ const Admin_Panel = () => {
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              minHeight: "calc(100vh - 250px)",
+              minHeight: "calc(100vh - 250px)", // Adjust based on your Layout's header/footer
               p: 4,
               textAlign: "center",
             }}
@@ -392,6 +402,7 @@ const Admin_Panel = () => {
     )
   }
 
+  // Not logged in state
   if (!currentUser && !isLoading) {
     return (
       <Layout>
@@ -435,6 +446,7 @@ const Admin_Panel = () => {
     <Layout>
       <ThemeProvider theme={theme}>
         <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
+          {/* Header */}
           <Box sx={{ mb: 4 }}>
             <Box
               sx={{
@@ -461,7 +473,7 @@ const Admin_Panel = () => {
                   size="small"
                   sx={{
                     fontWeight: 500,
-                    backgroundColor: "rgba(50, 141, 137, 0.1)",
+                    backgroundColor: "rgba(50, 141, 137, 0.1)", // Teal accent
                     borderColor: "primary.main",
                   }}
                 />
@@ -469,6 +481,7 @@ const Admin_Panel = () => {
             </Box>
           </Box>
 
+          {/* Empty state for users list */}
           {editableUsers.length === 0 && !isLoading && !error && (
             <Paper
               elevation={1}
@@ -482,10 +495,11 @@ const Admin_Panel = () => {
             </Paper>
           )}
 
+          {/* Users table */}
           {editableUsers.length > 0 && (
             <>
               <Paper elevation={2} sx={{ borderRadius: 2, overflow: "hidden", mb: 3 }}>
-                <TableContainer sx={{ maxHeight: "70vh" }}>
+                <TableContainer sx={{ maxHeight: "70vh" }}> {/* Scrollable table area */}
                   <Table stickyHeader aria-label="user permissions table">
                     <TableHead>
                       <TableRow>
@@ -499,11 +513,11 @@ const Admin_Panel = () => {
                           </TableCell>
                         ))}
                         {isSmallScreen && (
-                            <TableCell align="center" sx={{ fontWeight: "bold" }}>
-                              <Tooltip title="Permissions (A:Add, E:Edit, D:Delete - T:Tech, V:Event)" arrow placement="top">
-                                <Typography variant="caption" fontWeight="bold">Perms</Typography>
-                              </Tooltip>
-                            </TableCell>
+                           <TableCell align="center" sx={{ fontWeight: "bold" }}>
+                             <Tooltip title="Permissions (A:Add, E:Edit, D:Delete - T:Tech, V:Event)" arrow placement="top">
+                               <Typography variant="caption" fontWeight="bold">Perms</Typography>
+                             </Tooltip>
+                           </TableCell>
                         )}
                         <TableCell align="center" sx={{ fontWeight: "bold", width: 80 }}>Actions</TableCell>
                       </TableRow>
@@ -514,7 +528,7 @@ const Admin_Panel = () => {
                           key={user.uid}
                           sx={{
                             "&:hover": { backgroundColor: "rgba(50, 141, 137, 0.04)" },
-                            backgroundColor: changedUserUids.has(user.uid) ? "rgba(255, 244, 229, 0.7)" : "inherit",
+                            backgroundColor: changedUserUids.has(user.uid) ? "rgba(255, 244, 229, 0.7)" : "inherit", // Highlight changed rows
                             transition: "background-color 0.2s",
                           }}
                         >
@@ -523,7 +537,7 @@ const Admin_Panel = () => {
                               <Avatar src={user.photoURL} alt={user.displayName || user.email} sx={{ width: 32, height: 32, mr: 1.5, fontSize: '0.875rem' }}>
                                 {(user.displayName || user.email || "U").charAt(0).toUpperCase()}
                               </Avatar>
-                              <Box sx={{ minWidth: 0 }}>
+                              <Box sx={{ minWidth: 0 }}> {/* For ellipsis */}
                                 <Typography variant="body2" fontWeight="medium" noWrap title={user.displayName || "N/A"}>
                                   {user.displayName || "N/A"}
                                 </Typography>
@@ -544,7 +558,7 @@ const Admin_Panel = () => {
                                   displayEmpty
                                   inputProps={{ "aria-label": "Select role", id: `role-select-${user.uid}`}}
                                   sx={{ fontSize: '0.8rem', '.MuiSelect-select': {py: 0.8, px: 1} }}
-                                  disabled={user.uid === currentUser?.uid}
+                                  disabled={user.uid === currentUser?.uid} // Prevent non-superAdmin from changing own role (superAdmin can't change own role from 'superAdmin' here)
                                 >
                                   <MenuItem value="" disabled sx={{fontSize: '0.8rem'}}>
                                     <em>{user.role && ASSIGNABLE_ROLES.includes(user.role) ? 'Select Role' : (user.role || 'N/A')}</em>
@@ -559,10 +573,11 @@ const Admin_Panel = () => {
                             )}
                           </TableCell>
                           
+                          {/* Permissions for Desktop */}
                           {!isSmallScreen && PERMISSION_DEFINITIONS.map((pDef) => (
                             <TableCell key={pDef.key} align="center" sx={{p:0.5}}>
                               <Tooltip title={pDef.label} arrow>
-                                <span>
+                                <span> {/* Tooltip needs a span wrapper for disabled elements */}
                                   <Checkbox
                                     checked={!!user[pDef.key]}
                                     onChange={(e) => handlePermissionChange(user.uid, pDef.key, e.target.checked)}
@@ -577,6 +592,7 @@ const Admin_Panel = () => {
                             </TableCell>
                           ))}
 
+                          {/* Permissions for Mobile (Compact) */}
                           {isSmallScreen && (
                             <TableCell align="center">
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -601,6 +617,7 @@ const Admin_Panel = () => {
                                 </Box>
                             </TableCell>
                           )}
+
                           
                           <TableCell align="center">
                             {user.role !== "superAdmin" && user.uid !== currentUser?.uid && (
@@ -626,6 +643,7 @@ const Admin_Panel = () => {
                 </TableContainer>
               </Paper>
 
+              {/* Save changes button */}
               <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", mt: 3, gap: 2 }}>
                 {changedUserUids.size > 0 && (
                   <Typography variant="body2" color="orange.dark" sx={{ animation: "pulse 2s infinite", "@keyframes pulse": {"0%, 100%": { opacity: 1 },"50%": { opacity: 0.6 }}}}>
@@ -646,6 +664,7 @@ const Admin_Panel = () => {
             </>
           )}
 
+          {/* Delete User Confirmation Dialog */}
           <Dialog
             open={!!userToDelete}
             onClose={() => !isSaving && setUserToDelete(null)}
@@ -675,12 +694,14 @@ const Admin_Panel = () => {
             </DialogActions>
           </Dialog>
 
+          {/* Snackbar for notifications */}
           <Snackbar
             open={snackbarOpen}
             autoHideDuration={error ? 7000 : 4000}
             onClose={() => setSnackbarOpen(false)}
             anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           >
+            {/* Conditional rendering of Alert based on error or success */}
             {error ? (
                 <Alert onClose={() => { setSnackbarOpen(false); setError('');}} severity="error" variant="filled" sx={{ width: '100%' }}>
                     <AlertTitle sx={{fontWeight: 'bold'}}>Error</AlertTitle>
@@ -690,7 +711,7 @@ const Admin_Panel = () => {
                 <Alert onClose={() => { setSnackbarOpen(false); setSuccessMessage('');}} severity="success" variant="filled" sx={{ width: '100%' }}>
                     {successMessage}
                 </Alert>
-            ) : undefined}
+            ) : undefined /* Important for Snackbar to not render empty Alert */}
           </Snackbar>
         </Box>
       </ThemeProvider>
