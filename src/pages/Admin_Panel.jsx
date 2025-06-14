@@ -539,7 +539,7 @@ const confirmDeleteUser = async () => {
                               </Avatar>
                               <Box sx={{ minWidth: 0 }}> {/* For ellipsis */}
                                 <Typography variant="body2" fontWeight="medium" noWrap title={user.displayName || "N/A"}>
-                                  {user.displayName || "N/A"}
+                                  {user.displayName}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary" noWrap title={user.email}>
                                   {user.email}
