@@ -341,37 +341,37 @@ const Admin_Panel = () => {
     setUserToDelete(user)
   }
 
-  // Handler for confirming and executing user deletion
-  const confirmDeleteUser = async () => {
-    if (!userToDelete || !currentUser) return
+ // Handler for confirming and executing user deletion
+const confirmDeleteUser = async () => {
+  if (!userToDelete || !currentUser) return
 
-    setError("")
-    setSuccessMessage("")
-    setIsSaving(true) 
+  setError("")
+  setSuccessMessage("")
+  setIsSaving(true)
 
-    try {
-      const idToken = await currentUser.getIdToken(true)
-      // --- ACTUAL API CALL FOR DELETION ---
-      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userToDelete.uid}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${idToken}` },
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || `Failed to delete user ${userToDelete.email}`);
-      }
-      // --- END ACTUAL API CALL ---
-      
-      setSuccessMessage(`User ${userToDelete.email} has been deleted successfully.`)
-      fetchAllUsersWithPermissions(idToken) // Refresh user list
-    } catch (err) {
-      console.error("Error deleting user:", err)
-      setError(`Failed to delete user ${userToDelete.email}: ${err.message}`)
-    } finally {
-      setUserToDelete(null) 
-      setIsSaving(false)
+  try {
+    const idToken = await currentUser.getIdToken(true)
+    // --- CORRECTED API CALL FOR DELETION ---
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userToDelete.uid}`, { // The extra "/api" has been removed
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${idToken}` },
+    });
+    // --- END CORRECTION ---
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || `Failed to delete user ${userToDelete.email}`);
     }
+
+    setSuccessMessage(`User ${userToDelete.email} has been deleted successfully.`)
+    fetchAllUsersWithPermissions(idToken) // Refresh user list
+  } catch (err) {
+    console.error("Error deleting user:", err)
+    setError(`Failed to delete user ${userToDelete.email}: ${err.message}`)
+  } finally {
+    setUserToDelete(null)
+    setIsSaving(false)
   }
+}
 
   // Loading state
   if (isLoading && editableUsers.length === 0) {
