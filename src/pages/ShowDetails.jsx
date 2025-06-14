@@ -80,6 +80,7 @@ const theme = createTheme({
 });
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
+// const API_BASE_URL = "http://localhost:5001/api";
 const PATENT_STATUSES = ["Not Filed", "Application Filed", "Under Examination", "Granted", "Abandoned/Lapsed"];
 
 

@@ -13,6 +13,7 @@ import Login from "./pages/Login/Login";
 import ShowDetails from "./pages/ShowDetails";
 import SignUp from "./pages/SignUp/Signup" ;
 import Admin_Panel from "./pages/Admin_Panel";
+import DeletedTechs from "./pages/DeletedTechs";
 
 function App() {
   const ProtectedRoute = ({ children }) => {
@@ -94,6 +95,14 @@ function App() {
           element={
             <ProtectedRoute>
               <EditLinks />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/deleted-techs"
+          element={
+            <ProtectedRoute>
+              <DeletedTechs />
             </ProtectedRoute>
           }
         />

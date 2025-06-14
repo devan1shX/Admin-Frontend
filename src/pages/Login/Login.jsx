@@ -34,7 +34,9 @@ import {
     onAuthStateChanged,
 } from "../../firebase"; // Assuming firebase.js is in src/
 
-const API_BASE_URL = "https://otmt.iiitd.edu.in/api"; // Your backend URL
+const API_BASE_URL = "https://otmt.iiitd.edu.in/api"; 
+// const API_BASE_URL = "http://localhost:5001/api";
+
 
 const Login = () => {
     const [loginInfo, setLoginInfo] = useState({ email: "", password: "" });

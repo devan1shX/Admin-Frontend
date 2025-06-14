@@ -21,6 +21,7 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
+// const API_BASE_URL = "http://localhost:5001/api";
 const MAX_IMAGES = 5;
 const MAX_BROCHURES = 5;
 

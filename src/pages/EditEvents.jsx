@@ -12,6 +12,7 @@ import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
+// const API_BASE_URL = "http://localhost:5001/api";
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");

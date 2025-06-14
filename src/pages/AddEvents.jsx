@@ -10,10 +10,9 @@ import { useNavigate } from "react-router-dom";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Layout from "./Layout";
-// Assuming firebase.js is in src/ and this file is in src/pages/
-// import { auth } from "../firebase"; // auth is not directly used here
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
+// const API_BASE_URL = "http://localhost:5001/api";
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");

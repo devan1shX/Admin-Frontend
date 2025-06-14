@@ -15,6 +15,7 @@ import Layout from "./Layout";
 import { auth, signOut as firebaseSignOut } from "../firebase"; 
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
+// const API_BASE_URL = "http://localhost:5001/api";
 
 const getUserInfoFromStorage = () => {
     const userString = localStorage.getItem("user");
