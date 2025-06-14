@@ -2,7 +2,7 @@ import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import './App.css';
 
-import AddTechnology from "./pages/AddTechnology"; 
+import AddTechnology from "./pages/AddTechnology";
 import EditTechnology from "./pages/EditTechnology";
 import Dashboard from "./pages/Dashboard";
 import Events from "./pages/Events";
@@ -13,6 +13,8 @@ import Login from "./pages/Login/Login";
 import ShowDetails from "./pages/ShowDetails";
 import SignUp from "./pages/SignUp/Signup" ;
 import Admin_Panel from "./pages/Admin_Panel";
+// Correct the import path below
+import DeletedTechs from "./pages/DeletedTechs";
 
 function App() {
   const ProtectedRoute = ({ children }) => {
@@ -94,6 +96,14 @@ function App() {
           element={
             <ProtectedRoute>
               <EditLinks />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/deleted-techs"
+          element={
+            <ProtectedRoute>
+              <DeletedTechs />
             </ProtectedRoute>
           }
         />
