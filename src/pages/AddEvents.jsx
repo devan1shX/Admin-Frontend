@@ -1,1328 +1,380 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  TextField,
-  Button,
-  Paper,
-  Grid,
-  Typography,
-  useTheme,
-  useMediaQuery,
-  IconButton,
-  Box,
-  Card,
-  CardMedia,
-  Divider,
-  Switch,
-  FormControlLabel,
-  CircularProgress,
-  Alert,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Select,
+    TextField, Button, Paper, Grid, Typography, Box, Radio,
+    RadioGroup, FormControlLabel, FormControl, FormLabel, CircularProgress, Alert,
+    useTheme // Added useTheme
 } from "@mui/material";
-import AddPhotoAlternateIcon from "@mui/icons-material/AddPhotoAlternate";
-import DeleteIcon from "@mui/icons-material/Delete";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { useNavigate } from "react-router-dom";
-import Layout from "./Layout";
-import { toast, ToastContainer } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-
-// FIX 1: Correct the import path and import the 'auth' object
-import { auth } from "../firebase";
+import Layout from "./Layout";
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
-const MAX_IMAGES = 5;
-const MAX_BROCHURES = 5;
+// const API_BASE_URL = "http://localhost:5001/api";
 
-const PATENT_STATUSES = [
-  "Not Filed",
-  "Application Filed",
-  "Under Examination",
-  "Granted",
-  "Abandoned/Lapsed",
-];
-
-// This helper is fine for synchronous checks of user data
 const getUserInfoFromStorage = () => {
-  const userString = localStorage.getItem("user");
-  if (userString) {
-    try {
-      return JSON.parse(userString);
-    } catch (e) {
-      console.error("Failed to parse user info from localStorage", e);
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
-      return null;
+    const userString = localStorage.getItem("user");
+    if (userString) {
+        try {
+            return JSON.parse(userString);
+        } catch (e) {
+            console.error("Failed to parse user info from localStorage", e);
+            localStorage.removeItem("user");
+            localStorage.removeItem("token");
+            return null;
+        }
     }
-  }
-  return null;
+    return null;
 };
 
-// FIX 2: This is the definitive fix for the "Token Expired" error.
-// This function gets a fresh, valid token from the Firebase SDK every time.
-const addTechnologyAPI = async (newData) => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    // This case handles if the user's auth state is somehow lost
-    throw new Error(
-      "Authentication Error: No user is signed in. Please log in again."
-    );
-  }
+const getTokenFromStorage = () => localStorage.getItem("token");
 
-  // Always get a fresh token from Firebase. It handles caching and refreshing automatically.
-  const token = await currentUser.getIdToken();
-
-  const currentUserInfo = getUserInfoFromStorage();
-  if (!(currentUserInfo?.addTech || currentUserInfo?.role === "superAdmin")) {
-    throw new Error(
-      "Permission Denied: You are not authorized to add technologies."
-    );
-  }
-
-  const formData = new FormData();
-  Object.entries(newData).forEach(([key, value]) => {
-    if (key === "imagesData" || key === "brochureFilesData") return;
-    if (Array.isArray(value)) {
-      formData.append(key, JSON.stringify(value));
-    } else if (key === "spotlight") {
-      formData.append(key, String(value));
-    } else if (value !== null && value !== undefined && value !== "") {
-      formData.append(key, value);
-    } else if (key === "patent" && value === "Not Filed") {
-      formData.append(key, value);
+const addEventAPI = async (newEventData) => {
+    const token = getTokenFromStorage();
+    if (!token) {
+        throw new Error("Authentication token not found. Please log in.");
     }
-  });
 
-  let imageFileIndex = 0;
-  if (newData.imagesData && newData.imagesData.length > 0) {
-    newData.imagesData.forEach((imageObj) => {
-      if (imageObj.file) {
-        formData.append("images", imageObj.file);
-        // FIX 3: Corrected template literal syntax for image captions
-        formData.append(
-          `imageCaptions[${imageFileIndex}]`,
-          imageObj.caption || ""
-        );
-        imageFileIndex++;
-      }
-    });
-  }
-
-  if (newData.brochureFilesData && newData.brochureFilesData.length > 0) {
-    newData.brochureFilesData.forEach((brochureObj) => {
-      if (brochureObj.file) {
-        formData.append(
-          "brochureFiles",
-          brochureObj.file,
-          brochureObj.file.name
-        );
-      }
-    });
-  }
-
-  const response = await fetch(`${API_BASE_URL}/technologies`, {
-    method: "POST",
-    // FIX 3: Corrected template literal syntax for Authorization header
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorBody = await response
-      .json()
-      .catch(() => ({
-        message: `Request failed with status ${response.status}`,
-      }));
-    console.error(
-      "Failed to add technology. Status:",
-      response.status,
-      "Body:",
-      errorBody
-    );
-    throw new Error(
-      errorBody.message ||
-        `Failed to add technology. Status: ${response.status}`
-    );
-  }
-  return await response.json();
-};
-
-const AddTechnology = () => {
-  const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const fileInputRef = useRef(null);
-  const brochureFileInputRef = useRef(null);
-
-  const [userInfo, setUserInfo] = useState(() => getUserInfoFromStorage());
-  const [isPageAccessible, setIsPageAccessible] = useState(false);
-  const [loadingPage, setLoadingPage] = useState(true);
-  const [pageError, setPageError] = useState(null);
-
-  const [addData, setAddData] = useState({
-    name: "",
-    description: "",
-    overview: "",
-    detailedDescription: "",
-    genre: "",
-    innovators: [{ name: "", mail: "" }],
-    advantages: [""],
-    applications: [""],
-    useCases: [""],
-    relatedLinks: [{ title: "", url: "" }],
-    technicalSpecifications: "",
-    trl: "",
-    imagesData: [],
-    spotlight: false,
-    brochureFilesData: [],
-    patentStatus: "Not Filed",
-    patentId: "",
-    patentApplicationNumber: "",
-    patentFilingDate: "",
-    patentGrantDate: "",
-    patentDocumentUrl: "",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const canUserAddTech = useMemo(() => {
-    return userInfo?.addTech || userInfo?.role === "superAdmin";
-  }, [userInfo]);
-
-  useEffect(() => {
-    // The token from storage is only for the initial UI check, which is fine.
-    // The API call itself will always use a fresh token.
-    const token = localStorage.getItem("token");
+    // Client-side permission check (UX improvement, server enforces actual security)
     const currentUserInfo = getUserInfoFromStorage();
-
-    if (currentUserInfo && token) {
-      setUserInfo(currentUserInfo);
-      if (currentUserInfo.addTech || currentUserInfo.role === "superAdmin") {
-        setIsPageAccessible(true);
-      } else {
-        setPageError(
-          "Access Denied: You do not have permission to add technologies."
-        );
-        toast.error("Access Denied: Insufficient permissions.", {
-          position: "top-center",
-        });
-        setIsPageAccessible(false);
-        setTimeout(() => navigate("/admin-dashboard"), 3000);
-      }
-    } else {
-      toast.error("Authentication required. Redirecting to login.", {
-        position: "top-center",
-        autoClose: 2000,
-      });
-      setPageError("Authentication required.");
-      setIsPageAccessible(false);
-      setTimeout(() => navigate("/login"), 2100);
+    if (!(currentUserInfo?.addEvent || currentUserInfo?.role === 'superAdmin')) {
+        throw new Error("Permission Denied: You are not authorized to add events.");
     }
-    setLoadingPage(false);
-  }, [navigate]);
-
-  const handleGenericChange = (e) => {
-    const { name, value } = e.target;
-    setAddData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSpotlightSwitchChange = (e) => {
-    setAddData((prev) => ({ ...prev, [e.target.name]: e.target.checked }));
-  };
-
-  const handlePatentStatusChange = (e) => {
-    const newStatus = e.target.value;
-    setAddData((prev) => {
-      const newState = { ...prev, patentStatus: newStatus };
-      if (newStatus === "Not Filed") {
-        newState.patentId = "";
-        newState.patentApplicationNumber = "";
-        newState.patentFilingDate = "";
-        newState.patentGrantDate = "";
-        newState.patentDocumentUrl = "";
-      } else if (
-        newStatus === "Application Filed" ||
-        newStatus === "Under Examination"
-      ) {
-        newState.patentId = "";
-        newState.patentGrantDate = "";
-      }
-      return newState;
-    });
-  };
-
-  const handleAddInnovator = () =>
-    setAddData((prev) => ({
-      ...prev,
-      innovators: [...prev.innovators, { name: "", mail: "" }],
-    }));
-  const handleRemoveInnovator = (index) =>
-    setAddData((prev) => ({
-      ...prev,
-      innovators: prev.innovators.filter((_, i) => i !== index),
-    }));
-  const handleInnovatorChange = (index, field, value) => {
-    setAddData((prev) => ({
-      ...prev,
-      innovators: prev.innovators.map((item, i) =>
-        i === index ? { ...item, [field]: value } : item
-      ),
-    }));
-  };
-
-  const handleAddStringToArray = (fieldName) => {
-    setAddData((prev) => ({
-      ...prev,
-      [fieldName]: [...(prev[fieldName] || []), ""],
-    }));
-  };
-  const handleStringInArrayChange = (fieldName, index, value) => {
-    setAddData((prev) => {
-      const newArray = [...(prev[fieldName] || [])];
-      newArray[index] = value;
-      return { ...prev, [fieldName]: newArray };
-    });
-  };
-  const handleRemoveStringFromArray = (fieldName, index) => {
-    setAddData((prev) => ({
-      ...prev,
-      [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleAddRelatedLink = () =>
-    setAddData((prev) => ({
-      ...prev,
-      relatedLinks: [...(prev.relatedLinks || []), { title: "", url: "" }],
-    }));
-  const handleRemoveRelatedLink = (index) =>
-    setAddData((prev) => ({
-      ...prev,
-      relatedLinks: (prev.relatedLinks || []).filter((_, i) => i !== index),
-    }));
-  const handleRelatedLinkChange = (index, field, value) => {
-    setAddData((prev) => ({
-      ...prev,
-      relatedLinks: (prev.relatedLinks || []).map((item, i) =>
-        i === index ? { ...item, [field]: value } : item
-      ),
-    }));
-  };
-
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    const currentImageCount = addData.imagesData.length;
-    const remainingSlots = MAX_IMAGES - currentImageCount;
-
-    if (files.length > remainingSlots) {
-      toast.warn(
-        `You can only add ${
-          remainingSlots > 0 ? remainingSlots : 0
-        } more image(s). Max ${MAX_IMAGES} images allowed.`
-      );
-    }
-
-    const newImageObjects = files.slice(0, remainingSlots).map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-      caption: "",
-    }));
-
-    setAddData((prev) => ({
-      ...prev,
-      imagesData: [...prev.imagesData, ...newImageObjects],
-    }));
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const handleImageDelete = (index) => {
-    setAddData((prev) => {
-      const imageToDelete = prev.imagesData[index];
-      if (imageToDelete?.preview) URL.revokeObjectURL(imageToDelete.preview);
-      return {
-        ...prev,
-        imagesData: prev.imagesData.filter((_, i) => i !== index),
-      };
-    });
-  };
-
-  const handleImageCaptionChange = (index, caption) => {
-    setAddData((prev) => ({
-      ...prev,
-      imagesData: prev.imagesData.map((img, i) =>
-        i === index ? { ...img, caption } : img
-      ),
-    }));
-  };
-
-  const handleBrochureFilesChange = (e) => {
-    const files = Array.from(e.target.files);
-    const currentBrochureCount = addData.brochureFilesData.length;
-    const remainingSlots = MAX_BROCHURES - currentBrochureCount;
-
-    if (files.length === 0) return;
-
-    if (files.length > remainingSlots) {
-      toast.warn(
-        `You can only add ${
-          remainingSlots > 0 ? remainingSlots : 0
-        } more document(s). Max ${MAX_BROCHURES} brochures allowed.`
-      );
-    }
-
-    const newBrochureObjects = files
-      .slice(0, remainingSlots)
-      .map((file) => {
-        const allowedTypes = [
-          "application/pdf",
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "text/plain",
-          "application/vnd.oasis.opendocument.text",
-        ];
-        const fileExtension = file.name.split(".").pop().toLowerCase();
-        const commonDocExtensions = ["pdf", "doc", "docx", "txt", "odt"];
-
-        if (
-          !allowedTypes.includes(file.type) &&
-          !commonDocExtensions.includes(fileExtension)
-        ) {
-          toast.error(
-            `File "${file.name}" has an invalid type. Allowed: PDF, DOC, DOCX, TXT, ODT.`
-          );
-          return null;
-        }
-        if (file.size > 10 * 1024 * 1024) {
-          // 10MB limit
-          toast.error(`File "${file.name}" size exceeds 10MB limit.`);
-          return null;
-        }
-        return { file: file, name: file.name };
-      })
-      .filter(Boolean);
-
-    if (newBrochureObjects.length > 0) {
-      setAddData((prev) => ({
-        ...prev,
-        brochureFilesData: [...prev.brochureFilesData, ...newBrochureObjects],
-      }));
-    }
-
-    if (brochureFileInputRef.current) {
-      brochureFileInputRef.current.value = "";
-    }
-  };
-
-  const handleRemoveBrochureFileByIndex = (indexToRemove) => {
-    setAddData((prev) => ({
-      ...prev,
-      brochureFilesData: prev.brochureFilesData.filter(
-        (_, index) => index !== indexToRemove
-      ),
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!canUserAddTech) {
-      toast.error("Permission Denied. You cannot add technologies.");
-      return;
-    }
-    setIsSubmitting(true);
-
-    const processedData = { ...addData };
-    Object.keys(processedData).forEach((key) => {
-      if (typeof processedData[key] === "string")
-        processedData[key] = processedData[key].trim();
+    
+    const response = await fetch(`${API_BASE_URL}/events`, {
+        method: "POST",
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newEventData),
     });
 
-    processedData.patent = processedData.patentStatus;
-    delete processedData.patentStatus;
-
-    if (processedData.patent === "Not Filed") {
-      processedData.patentId = "";
-      processedData.patentApplicationNumber = "";
-      processedData.patentFilingDate = "";
-      processedData.patentGrantDate = "";
-      processedData.patentDocumentUrl = "";
-    } else if (
-      processedData.patent === "Application Filed" ||
-      processedData.patent === "Under Examination"
-    ) {
-      processedData.patentId = "";
-      processedData.patentGrantDate = "";
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: `Request failed with status ${response.status}` }));
+        console.error("Failed to add event. Status:", response.status, "Body:", errorBody);
+        throw new Error(errorBody.message || `Failed to add event. Status: ${response.status}`);
     }
-
-    if (
-      !processedData.name ||
-      !processedData.genre ||
-      !String(processedData.trl).trim() ||
-      !processedData.patent
-    ) {
-      toast.error(
-        "Please fill in all required fields: Name, Genre, TRL Level, and Patent Status."
-      );
-      setIsSubmitting(false);
-      return;
-    }
-    const trlNum = Number(processedData.trl);
-    if (isNaN(trlNum) || trlNum < 1 || trlNum > 9) {
-      toast.error("TRL Level must be a valid number between 1 and 9.");
-      setIsSubmitting(false);
-      return;
-    }
-    processedData.trl = trlNum;
-
-    processedData.innovators = (processedData.innovators || []).filter(
-      (inv) => inv.name.trim() || inv.mail.trim()
-    );
-    processedData.advantages = (processedData.advantages || [])
-      .map((adv) => adv.trim())
-      .filter(Boolean);
-    processedData.applications = (processedData.applications || [])
-      .map((app) => app.trim())
-      .filter(Boolean);
-    processedData.useCases = (processedData.useCases || [])
-      .map((uc) => uc.trim())
-      .filter(Boolean);
-    processedData.relatedLinks = (processedData.relatedLinks || []).filter(
-      (link) => link.title.trim() && link.url.trim()
-    );
-
-    try {
-      await addTechnologyAPI(processedData);
-      toast.success("Technology added successfully!");
-      navigate("/admin-dashboard");
-    } catch (error) {
-      console.error("Error adding technology:", error);
-      // FIX 3: Corrected template literal syntax for toast message
-      toast.error(`Error adding technology: ${error.message}`);
-      if (
-        error.message.includes("Access Denied") ||
-        error.message.includes("token not found") ||
-        error.message.includes("Authentication Error")
-      ) {
-        toast.error(
-          "Your session appears to be invalid. Redirecting to login."
-        );
-        localStorage.clear(); // Clear all local storage on auth error
-        setTimeout(() => navigate("/login"), 2500);
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (loadingPage) {
-    return (
-      <Layout title="Loading...">
-        <ToastContainer position="top-center" autoClose={3000} />
-        <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          sx={{ minHeight: "calc(100vh - 200px)", p: 3 }}
-        >
-          <CircularProgress />
-          <Typography sx={{ ml: 2 }}>Verifying Access...</Typography>
-        </Box>
-      </Layout>
-    );
-  }
-
-  if (!isPageAccessible) {
-    return (
-      <Layout title="Access Denied">
-        <ToastContainer position="top-center" autoClose={3000} />
-        <Paper
-          elevation={3}
-          sx={{
-            p: 4,
-            borderRadius: 2,
-            textAlign: "center",
-            margin: "20px auto",
-            maxWidth: "600px",
-          }}
-        >
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {pageError || "You do not have permission to access this page."}
-          </Alert>
-          <Button
-            variant="outlined"
-            onClick={() =>
-              navigate(
-                pageError &&
-                  (pageError.includes("login") ||
-                    pageError.includes("Authentication"))
-                  ? "/login"
-                  : "/admin-dashboard"
-              )
-            }
-            sx={{ mr: 1 }}
-          >
-            {pageError &&
-            (pageError.includes("login") ||
-              pageError.includes("Authentication"))
-              ? "Go to Login"
-              : "Back to Dashboard"}
-          </Button>
-        </Paper>
-      </Layout>
-    );
-  }
-
-  return (
-    <Layout title="Add New Technology">
-      <ToastContainer position="top-center" autoClose={3000} />
-      <Paper
-        elevation={3}
-        sx={{
-          p: { xs: 2, sm: 3, md: 4 },
-          borderRadius: "12px",
-          maxWidth: "lg",
-          margin: "20px auto",
-        }}
-      >
-        <Typography
-          variant="h4"
-          component="h1"
-          gutterBottom
-          sx={{ mb: 1, fontWeight: "bold", textAlign: "center" }}
-        >
-          Add New Technology
-        </Typography>
-        <Typography
-          variant="body2"
-          color="textSecondary"
-          sx={{ mb: 3, textAlign: "center" }}
-        >
-          Fields marked with * are required.
-        </Typography>
-
-        <form onSubmit={handleSubmit}>
-          <Grid container spacing={3}>
-            {/* No changes are needed in the JSX form itself. */}
-            {/* All your Grid items, TextFields, etc. are correct. */}
-
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 2.5,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ mb: 2.5, fontWeight: 500 }}
-                >
-                  Basic Information
-                </Typography>
-                <Grid container spacing={2.5}>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Name *"
-                      name="name"
-                      fullWidth
-                      value={addData.name}
-                      onChange={handleGenericChange}
-                      required
-                      disabled={isSubmitting}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="TRL Level *"
-                      name="trl"
-                      type="number"
-                      fullWidth
-                      value={addData.trl}
-                      onChange={handleGenericChange}
-                      required
-                      helperText="Technology Readiness Level (1-9)"
-                      disabled={isSubmitting}
-                      inputProps={{ min: 1, max: 9 }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Genre *"
-                      name="genre"
-                      fullWidth
-                      value={addData.genre}
-                      onChange={handleGenericChange}
-                      required
-                      disabled={isSubmitting}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Brief Description"
-                      name="description"
-                      fullWidth
-                      multiline
-                      rows={3}
-                      value={addData.description}
-                      onChange={handleGenericChange}
-                      disabled={isSubmitting}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <FormControl
-                      fullWidth
-                      variant="outlined"
-                      disabled={isSubmitting}
-                      required
-                    >
-                      <InputLabel id="patent-status-label">
-                        Patent Status *
-                      </InputLabel>
-                      <Select
-                        labelId="patent-status-label"
-                        id="patentStatus"
-                        name="patentStatus"
-                        value={addData.patentStatus}
-                        onChange={handlePatentStatusChange}
-                        label="Patent Status *"
-                      >
-                        {PATENT_STATUSES.map((status) => (
-                          <MenuItem key={status} value={status}>
-                            {status}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  {addData.patentStatus !== "Not Filed" && (
-                    <>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          label="Patent Application Number"
-                          name="patentApplicationNumber"
-                          fullWidth
-                          value={addData.patentApplicationNumber}
-                          onChange={handleGenericChange}
-                          disabled={isSubmitting}
-                        />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <TextField
-                          label="Patent Filing Date"
-                          name="patentFilingDate"
-                          type="date"
-                          fullWidth
-                          value={addData.patentFilingDate}
-                          onChange={handleGenericChange}
-                          InputLabelProps={{ shrink: true }}
-                          disabled={isSubmitting}
-                        />
-                      </Grid>
-
-                      {(addData.patentStatus === "Granted" ||
-                        addData.patentStatus === "Abandoned/Lapsed") && (
-                        <>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              label="Patent ID"
-                              name="patentId"
-                              fullWidth
-                              value={addData.patentId}
-                              onChange={handleGenericChange}
-                              disabled={isSubmitting}
-                              helperText={
-                                addData.patentStatus === "Granted"
-                                  ? "Required if granted"
-                                  : "If known"
-                              }
-                            />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              label="Patent Grant Date"
-                              name="patentGrantDate"
-                              type="date"
-                              fullWidth
-                              value={addData.patentGrantDate}
-                              onChange={handleGenericChange}
-                              InputLabelProps={{ shrink: true }}
-                              disabled={isSubmitting}
-                              helperText={
-                                addData.patentStatus === "Granted"
-                                  ? "Required if granted"
-                                  : "If known"
-                              }
-                            />
-                          </Grid>
-                        </>
-                      )}
-
-                      <Grid item xs={12}>
-                        <TextField
-                          label="Patent Document URL (Optional)"
-                          name="patentDocumentUrl"
-                          type="url"
-                          fullWidth
-                          value={addData.patentDocumentUrl}
-                          onChange={handleGenericChange}
-                          disabled={isSubmitting}
-                        />
-                      </Grid>
-                    </>
-                  )}
-
-                  <Grid
-                    item
-                    xs={12}
-                    sm={addData.patentStatus !== "Not Filed" ? 12 : 6}
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      mt: addData.patentStatus !== "Not Filed" ? 2 : 0,
-                    }}
-                  >
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={addData.spotlight}
-                          onChange={handleSpotlightSwitchChange}
-                          name="spotlight"
-                          disabled={isSubmitting}
-                        />
-                      }
-                      label="Spotlight Technology?"
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Divider light sx={{ my: 1 }} />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 2.5,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ mb: 1.5, fontWeight: 500 }}
-                >
-                  Brochures (Max {MAX_BROCHURES}, Optional)
-                </Typography>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.txt,.odt"
-                  style={{ display: "none" }}
-                  id="brochure-upload-input"
-                  onChange={handleBrochureFilesChange}
-                  ref={brochureFileInputRef}
-                  multiple
-                  disabled={
-                    isSubmitting ||
-                    addData.brochureFilesData.length >= MAX_BROCHURES
-                  }
-                />
-                <label htmlFor="brochure-upload-input">
-                  <Button
-                    variant="outlined"
-                    component="span"
-                    startIcon={<UploadFileIcon />}
-                    sx={{ mb: 2, textTransform: "none" }}
-                    disabled={
-                      isSubmitting ||
-                      addData.brochureFilesData.length >= MAX_BROCHURES
-                    }
-                  >
-                    Select Brochures
-                  </Button>
-                </label>
-                {addData.brochureFilesData.length > 0 && (
-                  <Box sx={{ mt: 1 }}>
-                    {addData.brochureFilesData.map((brochureObj, index) => (
-                      <Box
-                        key={index}
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          mb: 1,
-                          p: 1,
-                          border: `1px solid ${theme.palette.divider}`,
-                          borderRadius: 1,
-                          wordBreak: "break-all",
-                        }}
-                      >
-                        <Typography variant="body2" sx={{ ml: 1, flexGrow: 1 }}>
-                          {brochureObj.name}
-                        </Typography>
-                        <IconButton
-                          onClick={() => handleRemoveBrochureFileByIndex(index)}
-                          size="small"
-                          color="error"
-                          disabled={isSubmitting}
-                          sx={{ ml: 1 }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ))}
-                  </Box>
-                )}
-              </Box>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Divider light sx={{ my: 1 }} />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 2.5,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ mb: 2.5, fontWeight: 500 }}
-                >
-                  Innovators
-                </Typography>
-                {(addData.innovators || []).map((innovator, index) => (
-                  <Grid
-                    container
-                    spacing={2}
-                    key={index}
-                    sx={{ mb: 2, alignItems: "center" }}
-                  >
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        fullWidth
-                        label={`Innovator ${index + 1} Name`}
-                        value={innovator.name}
-                        onChange={(e) =>
-                          handleInnovatorChange(index, "name", e.target.value)
-                        }
-                        variant="outlined"
-                        size="small"
-                        disabled={isSubmitting}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        fullWidth
-                        label="Email (Optional)"
-                        type="email"
-                        value={innovator.mail}
-                        onChange={(e) =>
-                          handleInnovatorChange(index, "mail", e.target.value)
-                        }
-                        variant="outlined"
-                        size="small"
-                        disabled={isSubmitting}
-                      />
-                    </Grid>
-                    <Grid
-                      item
-                      xs={12}
-                      sm={2}
-                      sx={{ textAlign: isMobile ? "right" : "center" }}
-                    >
-                      {(addData.innovators || []).length > 1 && (
-                        <IconButton
-                          onClick={() => handleRemoveInnovator(index)}
-                          color="error"
-                          aria-label="Remove Innovator"
-                          disabled={isSubmitting}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      )}
-                    </Grid>
-                  </Grid>
-                ))}
-                <Button
-                  variant="outlined"
-                  onClick={handleAddInnovator}
-                  startIcon={<AddCircleOutlineIcon />}
-                  sx={{ mt: 1, textTransform: "none" }}
-                  disabled={isSubmitting}
-                >
-                  Add Innovator
-                </Button>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Divider light sx={{ my: 1 }} />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 2.5,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ mb: 2.5, fontWeight: 500 }}
-                >
-                  Technology Details
-                </Typography>
-                <Grid container spacing={2.5}>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Overview"
-                      name="overview"
-                      fullWidth
-                      multiline
-                      rows={3}
-                      value={addData.overview}
-                      onChange={handleGenericChange}
-                      disabled={isSubmitting}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Detailed Description"
-                      name="detailedDescription"
-                      fullWidth
-                      multiline
-                      rows={5}
-                      value={addData.detailedDescription}
-                      onChange={handleGenericChange}
-                      disabled={isSubmitting}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Technical Specifications (Optional)"
-                      name="technicalSpecifications"
-                      fullWidth
-                      multiline
-                      rows={3}
-                      value={addData.technicalSpecifications}
-                      onChange={handleGenericChange}
-                      disabled={isSubmitting}
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-            </Grid>
-
-            {["advantages", "applications", "useCases"].map((fieldName) => (
-              <Grid item xs={12} key={fieldName}>
-                <Box
-                  sx={{
-                    border: `1px solid ${theme.palette.divider}`,
-                    p: 2.5,
-                    borderRadius: 2,
-                  }}
-                >
-                  <Typography
-                    variant="h6"
-                    gutterBottom
-                    sx={{
-                      mb: 2.5,
-                      fontWeight: 500,
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {fieldName.replace(/([A-Z])/g, " $1")}
-                  </Typography>
-                  {(addData[fieldName] || []).map((value, index) => (
-                    <Grid
-                      container
-                      spacing={1}
-                      key={index}
-                      sx={{ mb: 1.5, alignItems: "center" }}
-                    >
-                      <Grid item xs>
-                        <TextField
-                          fullWidth
-                          label={`${fieldName.slice(0, -1)} ${index + 1}`}
-                          value={value}
-                          onChange={(e) =>
-                            handleStringInArrayChange(
-                              fieldName,
-                              index,
-                              e.target.value
-                            )
-                          }
-                          variant="outlined"
-                          size="small"
-                          disabled={isSubmitting}
-                        />
-                      </Grid>
-                      <Grid item xs="auto">
-                        {((addData[fieldName] || []).length > 1 || value) && (
-                          <IconButton
-                            onClick={() =>
-                              handleRemoveStringFromArray(fieldName, index)
-                            }
-                            color="error"
-                            aria-label={`Remove ${fieldName.slice(0, -1)}`}
-                            disabled={isSubmitting}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        )}
-                      </Grid>
-                    </Grid>
-                  ))}
-                  <Button
-                    variant="outlined"
-                    onClick={() => handleAddStringToArray(fieldName)}
-                    startIcon={<AddCircleOutlineIcon />}
-                    sx={{ mt: 1, textTransform: "none" }}
-                    disabled={isSubmitting}
-                  >
-                    Add {fieldName.slice(0, -1)}
-                  </Button>
-                </Box>
-              </Grid>
-            ))}
-
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 2.5,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ mb: 2.5, fontWeight: 500 }}
-                >
-                  Related Links (Optional)
-                </Typography>
-                {(addData.relatedLinks || []).map((link, index) => (
-                  <Grid
-                    container
-                    spacing={2}
-                    key={index}
-                    sx={{ mb: 2, alignItems: "center" }}
-                  >
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        fullWidth
-                        label={`Link Title ${index + 1}`}
-                        value={link.title}
-                        onChange={(e) =>
-                          handleRelatedLinkChange(
-                            index,
-                            "title",
-                            e.target.value
-                          )
-                        }
-                        variant="outlined"
-                        size="small"
-                        disabled={isSubmitting}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        fullWidth
-                        label="URL"
-                        type="url"
-                        value={link.url}
-                        onChange={(e) =>
-                          handleRelatedLinkChange(index, "url", e.target.value)
-                        }
-                        variant="outlined"
-                        size="small"
-                        disabled={isSubmitting}
-                      />
-                    </Grid>
-                    <Grid
-                      item
-                      xs={12}
-                      sm={2}
-                      sx={{ textAlign: isMobile ? "right" : "center" }}
-                    >
-                      {((addData.relatedLinks || []).length > 1 ||
-                        link.title ||
-                        link.url) && (
-                        <IconButton
-                          onClick={() => handleRemoveRelatedLink(index)}
-                          color="error"
-                          aria-label="Remove Link"
-                          disabled={isSubmitting}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      )}
-                    </Grid>
-                  </Grid>
-                ))}
-                <Button
-                  variant="outlined"
-                  onClick={handleAddRelatedLink}
-                  startIcon={<AddCircleOutlineIcon />}
-                  sx={{ mt: 1, textTransform: "none" }}
-                  disabled={isSubmitting}
-                >
-                  Add Link
-                </Button>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Divider light sx={{ my: 1 }} />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 2.5,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ mb: 1.5, fontWeight: 500 }}
-                >
-                  Images (Max {MAX_IMAGES}, Optional)
-                </Typography>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  ref={fileInputRef}
-                  onChange={handleImageUpload}
-                  id="image-upload-input"
-                />
-                <label htmlFor="image-upload-input">
-                  <Button
-                    variant="outlined"
-                    component="span"
-                    startIcon={<AddPhotoAlternateIcon />}
-                    sx={{ mb: 2, textTransform: "none" }}
-                    disabled={
-                      isSubmitting || addData.imagesData.length >= MAX_IMAGES
-                    }
-                  >
-                    {" "}
-                    Select Images{" "}
-                  </Button>
-                </label>
-                <Grid container spacing={2} sx={{ mt: 0.5 }}>
-                  {addData.imagesData.map((image, index) => (
-                    <Grid item xs={12} sm={6} md={4} key={index}>
-                      <Card
-                        sx={{
-                          position: "relative",
-                          height: "100%",
-                          display: "flex",
-                          flexDirection: "column",
-                          boxShadow: theme.shadows[1],
-                        }}
-                      >
-                        <CardMedia
-                          component="img"
-                          height="160"
-                          image={image.preview}
-                          alt={`Preview ${index + 1}`}
-                          sx={{ objectFit: "contain", p: 1 }}
-                        />
-                        <IconButton
-                          aria-label="Delete image"
-                          sx={{
-                            position: "absolute",
-                            top: 6,
-                            right: 6,
-                            bgcolor: "rgba(0,0,0,0.4)",
-                            color: "white",
-                            p: 0.5,
-                            "&:hover": { bgcolor: "rgba(0,0,0,0.6)" },
-                          }}
-                          onClick={() => handleImageDelete(index)}
-                          disabled={isSubmitting}
-                        >
-                          {" "}
-                          <DeleteIcon fontSize="small" />{" "}
-                        </IconButton>
-                        <Box sx={{ p: 1.5, mt: "auto" }}>
-                          {" "}
-                          <TextField
-                            fullWidth
-                            size="small"
-                            variant="outlined"
-                            placeholder="Image Caption (optional)"
-                            value={image.caption}
-                            onChange={(e) =>
-                              handleImageCaptionChange(index, e.target.value)
-                            }
-                            disabled={isSubmitting}
-                          />{" "}
-                        </Box>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} sx={{ textAlign: "center", mt: 3 }}>
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                disabled={isSubmitting}
-                sx={{
-                  borderRadius: "8px",
-                  py: 1.25,
-                  px: 5,
-                  fontWeight: "bold",
-                  boxShadow: theme.shadows[2],
-                  bgcolor: "primary.dark",
-                  color: "white",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
-                  "&:hover": {
-                    boxShadow: theme.shadows[4],
-                    transform: "translateY(-2px)",
-                    bgcolor: "primary.main",
-                  },
-                  "&:disabled": {
-                    background: theme.palette.action.disabledBackground,
-                    color: theme.palette.action.disabled,
-                  },
-                }}
-              >
-                {isSubmitting ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  "Submit Technology"
-                )}
-              </Button>
-            </Grid>
-          </Grid>
-        </form>
-      </Paper>
-    </Layout>
-  );
+    return await response.json();
 };
 
-export default AddTechnology;
+
+const AddEvents = () => {
+    const navigate = useNavigate();
+    const theme = useTheme(); // Added useTheme
+
+    const [userInfo, setUserInfo] = useState(() => getUserInfoFromStorage());
+    const [isPageAccessible, setIsPageAccessible] = useState(false);
+    const [loadingPage, setLoadingPage] = useState(true);
+    const [pageError, setPageError] = useState(null);
+
+    const [eventData, setEventData] = useState({
+        title: "",
+        month: "",
+        day: "",
+        location: "",
+        time: "",
+        description: "",
+        registration: "",
+        isActive: "true", // Default to true (Upcoming)
+    });
+    const [errors, setErrors] = useState({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const canUserAddEvent = useMemo(() => {
+        return userInfo?.addEvent || userInfo?.role === 'superAdmin';
+    }, [userInfo]);
+
+    useEffect(() => {
+        const currentUserInfo = getUserInfoFromStorage();
+        const token = getTokenFromStorage();
+
+        if (currentUserInfo && token) {
+            setUserInfo(currentUserInfo); // Set userInfo for canUserAddEvent to use
+            // Permission check will be done in the next effect that depends on canUserAddEvent
+        } else {
+            toast.error("Authentication required. Redirecting to login.", { position: "top-center", autoClose: 2000 });
+            setPageError("Authentication required.");
+            setIsPageAccessible(false);
+            setLoadingPage(false);
+            setTimeout(() => navigate('/login'), 2100);
+        }
+    }, [navigate]);
+
+    useEffect(() => {
+        if (userInfo) { // This effect runs once userInfo is set
+            if (canUserAddEvent) {
+                setIsPageAccessible(true);
+            } else {
+                setPageError("Access Denied: You do not have permission to add events.");
+                toast.error("Access Denied: Insufficient permissions.", { position: "top-center" });
+                setIsPageAccessible(false);
+                setTimeout(() => navigate('/admin-dashboard'), 3000);
+            }
+        }
+        // Only set loadingPage to false after permission check is done based on userInfo
+        if (userInfo !== null) { // Check if userInfo has been attempted to be loaded
+             setLoadingPage(false);
+        }
+    }, [userInfo, canUserAddEvent, navigate]);
+
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setEventData({ ...eventData, [name]: value });
+
+        if (errors[name]) {
+            setErrors((prev) => ({ ...prev, [name]: "" }));
+        }
+        if (errors.submit) {
+            setErrors((prev) => ({ ...prev, submit: "" }));
+        }
+    };
+
+    const validate = () => {
+        const newErrors = {};
+        if (!eventData.title.trim()) newErrors.title = "Title is required";
+        if (!eventData.month.trim()) newErrors.month = "Month is required";
+        if (!eventData.day.trim()) newErrors.day = "Day is required";
+        if (!eventData.location.trim()) newErrors.location = "Location is required";
+        if (!eventData.time.trim()) newErrors.time = "Time is required";
+        return newErrors;
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!canUserAddEvent) {
+            toast.error("Permission Denied. You cannot add events.");
+            return;
+        }
+        setErrors({});
+
+        const validationErrors = validate();
+        if (Object.keys(validationErrors).length > 0) {
+            setErrors(validationErrors);
+            toast.warn("Please fill in all required fields.", { position: "top-center" });
+            return;
+        }
+
+        setIsSubmitting(true);
+
+        const dataToSend = {
+            ...eventData,
+            isActive: eventData.isActive === "true",
+        };
+
+        try {
+            await addEventAPI(dataToSend);
+            toast.success("Event added successfully!", { position: "top-center" });
+            setEventData({
+                title: "", month: "", day: "", location: "", time: "",
+                description: "", registration: "", isActive: "true",
+            });
+            setErrors({});
+            setTimeout(() => navigate("/admin-events"), 1000);
+        } catch (error) {
+            console.error("Error creating event", error);
+            let errorMsg = "Failed to create event. Please try again.";
+            // error.response might not exist if using fetch directly, error itself is the response or network error
+            if (error.message) {
+                errorMsg = error.message;
+            }
+            
+            if (errorMsg.includes("Access Denied") || errorMsg.includes("token not found") || errorMsg.includes("Authentication failed")) {
+                 localStorage.removeItem("user");
+                 localStorage.removeItem("token");
+                 setTimeout(() => navigate('/login'), 2000);
+            }
+            setErrors({ submit: errorMsg });
+            toast.error(errorMsg, { position: "top-center" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    if (loadingPage) {
+        return ( <Layout title="Loading..."><ToastContainer position="top-center" autoClose={3000} /><Box display="flex" justifyContent="center" alignItems="center" sx={{ minHeight: 'calc(100vh - 200px)', p: 3 }}><CircularProgress /><Typography sx={{ ml: 2 }}>Verifying Access...</Typography></Box></Layout> );
+    }
+
+    if (!isPageAccessible) {
+        return ( <Layout title="Access Denied"><ToastContainer position="top-center" autoClose={3000} /><Paper elevation={3} sx={{ p: 4, borderRadius: 2, textAlign: 'center', margin: "20px auto", maxWidth: '600px' }}><Alert severity="error" sx={{ mb: 3 }}>{pageError || "You do not have permission to access this page."}</Alert><Button variant="outlined" onClick={() => navigate(pageError && (pageError.includes("login") || pageError.includes("Authentication")) ? '/login' : '/admin-dashboard')} sx={{ mr: 1 }}>{pageError && (pageError.includes("login") || pageError.includes("Authentication")) ? 'Go to Login' : 'Back to Dashboard'}</Button></Paper></Layout> );
+    }
+
+    return (
+        <Layout title="Add New Event">
+            <ToastContainer position="top-center" autoClose={3000} />
+            <Paper elevation={3} sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2, margin: "20px auto", maxWidth: '800px' }}>
+                <Typography
+                    variant="h5"
+                    gutterBottom
+                    sx={{ mb: 3, fontWeight: "bold", textAlign: "center" }}
+                >
+                    Add New Event
+                </Typography>
+                <form onSubmit={handleSubmit} noValidate>
+                    <Grid container spacing={3}>
+                        <Grid item xs={12} sm={6}>
+                            <TextField
+                                required
+                                label="Title"
+                                name="title"
+                                fullWidth
+                                value={eventData.title}
+                                onChange={handleChange}
+                                error={Boolean(errors.title)}
+                                helperText={errors.title || " "}
+                                disabled={isSubmitting}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                            <TextField
+                                required
+                                label="Month"
+                                name="month"
+                                fullWidth
+                                value={eventData.month}
+                                onChange={handleChange}
+                                error={Boolean(errors.month)}
+                                helperText={errors.month || "e.g., January, Feb"}
+                                disabled={isSubmitting}
+                            />
+                        </Grid>
+                         <Grid item xs={12} sm={3}>
+                            <TextField
+                                required
+                                label="Day"
+                                name="day"
+                                fullWidth
+                                value={eventData.day}
+                                onChange={handleChange}
+                                error={Boolean(errors.day)}
+                                helperText={errors.day || "e.g., 01, 15, 31"}
+                                disabled={isSubmitting}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <TextField
+                                required
+                                label="Location"
+                                name="location"
+                                fullWidth
+                                value={eventData.location}
+                                onChange={handleChange}
+                                error={Boolean(errors.location)}
+                                helperText={errors.location || " "}
+                                disabled={isSubmitting}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <TextField
+                                required
+                                label="Time"
+                                name="time"
+                                fullWidth
+                                value={eventData.time}
+                                onChange={handleChange}
+                                error={Boolean(errors.time)}
+                                helperText={errors.time || "e.g., 10:00 AM - 02:00 PM"}
+                                disabled={isSubmitting}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12} sm={6}>
+                            <FormControl component="fieldset" disabled={isSubmitting}>
+                                <FormLabel component="legend">Event Status</FormLabel>
+                                <RadioGroup
+                                    row
+                                    aria-label="status"
+                                    name="isActive"
+                                    value={eventData.isActive}
+                                    onChange={handleChange}
+                                >
+                                    <FormControlLabel value="true" control={<Radio />} label="Upcoming" />
+                                    <FormControlLabel value="false" control={<Radio />} label="Past" />
+                                </RadioGroup>
+                            </FormControl>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                            <TextField
+                                label="Description"
+                                name="description"
+                                fullWidth
+                                multiline
+                                rows={3}
+                                value={eventData.description}
+                                onChange={handleChange}
+                                disabled={isSubmitting}
+                                helperText=" "
+                            />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <TextField
+                                label="Registration Link (Optional)"
+                                name="registration"
+                                type="url"
+                                fullWidth
+                                value={eventData.registration}
+                                onChange={handleChange}
+                                disabled={isSubmitting}
+                                helperText=" "
+                            />
+                        </Grid>
+
+                        {errors.submit && (
+                            <Grid item xs={12}>
+                                <Typography color="error" align="center" variant="body2">
+                                    {errors.submit}
+                                </Typography>
+                            </Grid>
+                        )}
+
+                        <Grid item xs={12} sx={{ textAlign: "center", mt: 2 }}>
+                            <Button
+                                type="submit"
+                                variant="contained"
+                                size="large"
+                                disabled={isSubmitting}
+                                sx={{
+                                    borderRadius: 2,
+                                    py: 1.5,
+                                    px: 4,
+                                    minWidth: 150,
+                                    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+                                    background: "linear-gradient(45deg, #1e293b, #0f172a)",
+                                    color: "white",
+                                    transition: "all 0.3s",
+                                    position: 'relative',
+                                    "&:hover": {
+                                        boxShadow: "0 6px 8px rgba(0, 0, 0, 0.2)",
+                                        transform: "translateY(-2px)",
+                                        background: "linear-gradient(45deg, #0f172a, #1e293b)",
+                                    },
+                                    '&.Mui-disabled': {
+                                        background: (theme) => theme.palette.action.disabledBackground,
+                                        color: (theme) => theme.palette.action.disabled
+                                    }
+                                }}
+                            >
+                                {isSubmitting ? <CircularProgress size={24} color="inherit" /> : "Add Event"}
+                            </Button>
+                             <Button
+                                variant="outlined"
+                                size="large"
+                                onClick={() => navigate("/admin-events")}
+                                disabled={isSubmitting}
+                                sx={{ ml: 2, py: 1.5, px: 4, borderRadius: 2 }}
+                            >
+                                Cancel
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </form>
+            </Paper>
+        </Layout>
+    );
+};
+
+export default AddEvents;
