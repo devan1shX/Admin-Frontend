@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "./Layout";
 import { auth, signOut as firebaseSignOut } from "../firebase";
@@ -24,6 +24,7 @@ import {
 import {
   RestoreFromTrash as RestoreIcon,
   WarningAmber as WarningIcon,
+  DeleteForever as DeleteForeverIcon, 
 } from "@mui/icons-material";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -39,8 +40,13 @@ const DeletedTechs = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
+  
+  // --- 2. STATE: Added state for the permanent delete flow ---
+  const [deletingId, setDeletingId] = useState(null);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [techToDelete, setTechToDelete] = useState(null);
+  // ---------------------------------------------------------
 
-  // Dialog state for restore confirmation
   const [openRestoreDialog, setOpenRestoreDialog] = useState(false);
   const [techToRestore, setTechToRestore] = useState(null);
 
@@ -88,9 +94,15 @@ const DeletedTechs = () => {
     fetchDeletedTechs();
   }, [fetchDeletedTechs]);
 
+  // --- Restore Handlers ---
   const handleRestoreClick = (tech) => {
     setTechToRestore(tech);
     setOpenRestoreDialog(true);
+  };
+
+  const handleCloseRestoreDialog = () => {
+    setOpenRestoreDialog(false);
+    setTechToRestore(null);
   };
 
   const handleRestoreConfirm = async () => {
@@ -128,10 +140,49 @@ const DeletedTechs = () => {
     }
   };
 
-  const handleCloseRestoreDialog = () => {
-    setOpenRestoreDialog(false);
-    setTechToRestore(null);
+  // --- 3. FUNCTIONS: Added handlers for the permanent delete flow ---
+  const handleDeleteClick = (tech) => {
+    setTechToDelete(tech);
+    setOpenDeleteDialog(true);
   };
+
+  const handleCloseDeleteDialog = () => {
+    setOpenDeleteDialog(false);
+    setTechToDelete(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!techToDelete) return;
+
+    setDeletingId(techToDelete.id);
+    setOpenDeleteDialog(false);
+    const token = getTokenFromStorage();
+    const techId = techToDelete.id;
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/technologies/deleted/${techId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to permanently delete.");
+      }
+
+      toast.success(result.message, { position: "top-center" });
+      setTechs((prevTechs) => prevTechs.filter((t) => t.id !== techId));
+    } catch (err) {
+      toast.error(err.message, { position: "top-center" });
+    } finally {
+      setDeletingId(null);
+      setTechToDelete(null);
+    }
+  };
+  // -------------------------------------------------------------
 
   const getTimeLeft = (deletedAt) => {
     const deletionTime =
@@ -140,7 +191,7 @@ const DeletedTechs = () => {
     const diff = deletionTime - now;
 
     if (diff <= 0)
-      return { text: "Permanently deleted", color: "error", isExpired: true };
+      return { text: "Marked for deletion", color: "error", isExpired: true };
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -151,7 +202,8 @@ const DeletedTechs = () => {
       return { text: `1 day left`, color: "warning", isExpired: false };
     return { text: `${hours} hours left`, color: "error", isExpired: false };
   };
-
+  
+  // --- Main Render Function ---
   const renderContent = () => {
     if (loading) {
       return (
@@ -189,6 +241,7 @@ const DeletedTechs = () => {
       <Grid container spacing={3}>
         {techs.map((tech) => {
           const timeLeft = getTimeLeft(tech.deletedAt);
+          const isActionInProgress = restoringId === tech.id || deletingId === tech.id;
           return (
             <Grid item xs={12} key={tech.id}>
               <Card
@@ -226,7 +279,9 @@ const DeletedTechs = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    gap: 1.5, // Added gap for spacing
                     p: { xs: 2, md: 3 },
+                    flexDirection: { xs: 'row', sm: 'row' }, // Ensure buttons are in a row
                   }}
                 >
                   <Button
@@ -239,10 +294,28 @@ const DeletedTechs = () => {
                       )
                     }
                     onClick={() => handleRestoreClick(tech)}
-                    disabled={restoringId === tech.id || timeLeft.isExpired}
+                    disabled={isActionInProgress || timeLeft.isExpired}
                   >
                     {restoringId === tech.id ? "Restoring..." : "Restore"}
                   </Button>
+                  
+                  {/* --- 4. UI: Added permanent delete button --- */}
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={
+                      deletingId === tech.id ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <DeleteForeverIcon />
+                      )
+                    }
+                    onClick={() => handleDeleteClick(tech)}
+                    disabled={isActionInProgress}
+                  >
+                    {deletingId === tech.id ? "Deleting..." : "Delete Permanently"}
+                  </Button>
+                  {/* ------------------------------------------- */}
                 </Box>
               </Card>
             </Grid>
@@ -265,11 +338,12 @@ const DeletedTechs = () => {
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
           These technologies have been archived and will be permanently deleted
-          after 30 days. You can restore them before they expire.
+          after 30 days. You can restore them or delete them permanently now.
         </Typography>
         {renderContent()}
       </Box>
 
+      {/* Restore Confirmation Dialog */}
       <Dialog open={openRestoreDialog} onClose={handleCloseRestoreDialog}>
         <DialogTitle>Confirm Restore</DialogTitle>
         <DialogContent>
@@ -285,6 +359,36 @@ const DeletedTechs = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* --- 5. UI: Added permanent delete confirmation dialog --- */}
+      <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
+        <DialogTitle sx={{ color: "error.main", display: 'flex', alignItems: 'center' }}>
+          <WarningIcon sx={{ mr: 1 }}/>
+          Confirm Permanent Deletion
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            Are you sure you want to permanently delete the technology "
+            <strong>{techToDelete?.name}</strong>"?
+          </DialogContentText>
+          <DialogContentText sx={{ mt: 2, color: "error.dark", fontWeight: 'bold' }}>
+            This action is irreversible. All associated data and files for this
+            technology will be removed immediately.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button
+            onClick={handleDeleteConfirm}
+            autoFocus
+            variant="contained"
+            color="error"
+          >
+            Delete Permanently
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* --------------------------------------------------------- */}
     </Layout>
   );
 };
