@@ -27,12 +27,11 @@ import AddPhotoAlternateIcon from "@mui/icons-material/AddPhotoAlternate";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Layout from "./Layout";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-// FIX 1: Correct the import path and import the 'auth' object
 import { auth } from "../firebase";
 
 const API_BASE_URL = "https://otmt.iiitd.edu.in/api";
@@ -47,7 +46,31 @@ const PATENT_STATUSES = [
   "Abandoned/Lapsed",
 ];
 
-// This helper is fine for synchronous checks of user data
+const GENRE_OPTIONS = [
+  { name: "Internet of Things", value: "IoT" },
+  { name: "Artificial Intelligence", value: "AI" },
+  { name: "Machine Learning", value: "ML" },
+  { name: "Data Science", value: "DataSci" },
+  { name: "Blockchain", value: "Blockchain" },
+  { name: "Robotics", value: "Robotics" },
+  { name: "Augmented Reality", value: "AR" },
+  { name: "Virtual Reality", value: "VR" },
+  { name: "Cybersecurity", value: "CyberSec" },
+  { name: "Biotechnology", value: "BioTech" },
+  { name: "Health Technology", value: "HealthTech" },
+  { name: "Financial Technology", value: "FinTech" },
+  { name: "Educational Technology", value: "EdTech" },
+  { name: "Agricultural Technology", value: "AgriTech" },
+  { name: "Cloud Computing", value: "Cloud" },
+  { name: "Software as a Service", value: "SaaS" },
+  { name: "Autonomous Vehicles", value: "AV" },
+  { name: "Quantum Computing", value: "Quantum" },
+  { name: "Drones", value: "Drones" },
+  { name: "3D Printing", value: "3DP" },
+  { name: "Nanotechnology", value: "NanoTech" },
+  { name: "Clean Technology", value: "CleanTech" },
+];
+
 const getUserInfoFromStorage = () => {
   const userString = localStorage.getItem("user");
   if (userString) {
@@ -63,18 +86,14 @@ const getUserInfoFromStorage = () => {
   return null;
 };
 
-// FIX 2: This is the definitive fix for the "Token Expired" error.
-// This function gets a fresh, valid token from the Firebase SDK every time.
 const addTechnologyAPI = async (newData) => {
   const currentUser = auth.currentUser;
   if (!currentUser) {
-    // This case handles if the user's auth state is somehow lost
     throw new Error(
       "Authentication Error: No user is signed in. Please log in again."
     );
   }
 
-  // Always get a fresh token from Firebase. It handles caching and refreshing automatically.
   const token = await currentUser.getIdToken();
 
   const currentUserInfo = getUserInfoFromStorage();
@@ -103,7 +122,6 @@ const addTechnologyAPI = async (newData) => {
     newData.imagesData.forEach((imageObj) => {
       if (imageObj.file) {
         formData.append("images", imageObj.file);
-        // FIX 3: Corrected template literal syntax for image captions
         formData.append(
           `imageCaptions[${imageFileIndex}]`,
           imageObj.caption || ""
@@ -127,17 +145,14 @@ const addTechnologyAPI = async (newData) => {
 
   const response = await fetch(`${API_BASE_URL}/technologies`, {
     method: "POST",
-    // FIX 3: Corrected template literal syntax for Authorization header
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
   });
 
   if (!response.ok) {
-    const errorBody = await response
-      .json()
-      .catch(() => ({
-        message: `Request failed with status ${response.status}`,
-      }));
+    const errorBody = await response.json().catch(() => ({
+      message: `Request failed with status ${response.status}`,
+    }));
     console.error(
       "Failed to add technology. Status:",
       response.status,
@@ -194,8 +209,6 @@ const AddTechnology = () => {
   }, [userInfo]);
 
   useEffect(() => {
-    // The token from storage is only for the initial UI check, which is fine.
-    // The API call itself will always use a fresh token.
     const token = localStorage.getItem("token");
     const currentUserInfo = getUserInfoFromStorage();
 
@@ -457,14 +470,19 @@ const AddTechnology = () => {
       processedData.patentGrantDate = "";
     }
 
+    processedData.innovators = (processedData.innovators || []).filter((inv) =>
+      inv.name.trim()
+    );
+
     if (
       !processedData.name ||
       !processedData.genre ||
       !String(processedData.trl).trim() ||
-      !processedData.patent
+      !processedData.patent ||
+      processedData.innovators.length === 0
     ) {
       toast.error(
-        "Please fill in all required fields: Name, Genre, TRL Level, and Patent Status."
+        "Please fill in all required fields: Name, Genre, TRL Level, Patent Status, and at least one Innovator's Name."
       );
       setIsSubmitting(false);
       return;
@@ -477,9 +495,6 @@ const AddTechnology = () => {
     }
     processedData.trl = trlNum;
 
-    processedData.innovators = (processedData.innovators || []).filter(
-      (inv) => inv.name.trim() || inv.mail.trim()
-    );
     processedData.advantages = (processedData.advantages || [])
       .map((adv) => adv.trim())
       .filter(Boolean);
@@ -499,7 +514,6 @@ const AddTechnology = () => {
       navigate("/admin-dashboard");
     } catch (error) {
       console.error("Error adding technology:", error);
-      // FIX 3: Corrected template literal syntax for toast message
       toast.error(`Error adding technology: ${error.message}`);
       if (
         error.message.includes("Access Denied") ||
@@ -509,7 +523,7 @@ const AddTechnology = () => {
         toast.error(
           "Your session appears to be invalid. Redirecting to login."
         );
-        localStorage.clear(); // Clear all local storage on auth error
+        localStorage.clear();
         setTimeout(() => navigate("/login"), 2500);
       }
     } finally {
@@ -650,15 +664,31 @@ const AddTechnology = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Genre *"
-                      name="genre"
+                    <FormControl
                       fullWidth
-                      value={addData.genre}
-                      onChange={handleGenericChange}
+                      variant="outlined"
                       required
                       disabled={isSubmitting}
-                    />
+                    >
+                      <InputLabel id="genre-select-label">Genre *</InputLabel>
+                      <Select
+                        labelId="genre-select-label"
+                        id="genre"
+                        name="genre"
+                        value={addData.genre}
+                        onChange={handleGenericChange}
+                        label="Genre *"
+                      >
+                        <MenuItem value="">
+                          <em>Select a Genre</em>
+                        </MenuItem>
+                        {GENRE_OPTIONS.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
                   <Grid item xs={12}>
                     <TextField
@@ -840,7 +870,7 @@ const AddTechnology = () => {
                     variant="outlined"
                     component="span"
                     startIcon={<UploadFileIcon />}
-                    sx={{ mb: 2, textTransform: "none" }}
+                    sx={{ mb: 2, mr: 2, textTransform: "none" }}
                     disabled={
                       isSubmitting ||
                       addData.brochureFilesData.length >= MAX_BROCHURES
@@ -849,6 +879,17 @@ const AddTechnology = () => {
                     Select Brochures
                   </Button>
                 </label>
+                <Button
+                  component="a"
+                  href="https://api.otmt.iiitd.edu.in/brochure/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="contained"
+                  sx={{ mb: 2, textTransform: "none" }}
+                  disabled={isSubmitting}
+                >
+                  Create Your Brochure
+                </Button>
                 {addData.brochureFilesData.length > 0 && (
                   <Box sx={{ mt: 1 }}>
                     {addData.brochureFilesData.map((brochureObj, index) => (
@@ -900,7 +941,7 @@ const AddTechnology = () => {
                   gutterBottom
                   sx={{ mb: 2.5, fontWeight: 500 }}
                 >
-                  Innovators
+                  Innovators *
                 </Typography>
                 {(addData.innovators || []).map((innovator, index) => (
                   <Grid
@@ -912,7 +953,7 @@ const AddTechnology = () => {
                     <Grid item xs={12} sm={5}>
                       <TextField
                         fullWidth
-                        label={`Innovator ${index + 1} Name`}
+                        label={`Innovator ${index + 1} Name *`}
                         value={innovator.name}
                         onChange={(e) =>
                           handleInnovatorChange(index, "name", e.target.value)
@@ -920,6 +961,7 @@ const AddTechnology = () => {
                         variant="outlined"
                         size="small"
                         disabled={isSubmitting}
+                        required 
                       />
                     </Grid>
                     <Grid item xs={12} sm={5}>
