@@ -462,6 +462,7 @@ const Dashboard = () => {
                 <tr>
                   <th>Title</th>
                   <th>TRL</th>
+                  <th>Description</th>
                   <th>Innovator(s)</th>
                   <th>Genre</th>
                   <th>Created At</th>
@@ -485,6 +486,7 @@ const Dashboard = () => {
                       <tr>
                         <td>${tech.name || "N/A"}</td>
                         <td>${tech.trl || "N/A"}</td>
+                        <td>${tech.description || "NA"}</td>
                         <td>${innovators}</td>
                         <td>${tech.genre || "N/A"}</td>
                         <td>${createdAt}</td>
@@ -504,7 +506,7 @@ const Dashboard = () => {
       setTimeout(() => {
         printWindow.print();
         printWindow.close();
-      }, 250); // Small delay to ensure content is rendered
+      }, 250); 
     } else {
       toast.error(
         "Could not open print window. Please disable pop-up blockers."
